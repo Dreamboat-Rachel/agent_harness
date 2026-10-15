@@ -1,0 +1,43 @@
+appId: com.agentharness.desktop
+productName: Agent Harness
+
+directories:
+  output: desktop-dist
+  buildResources: desktop/build
+
+files:
+  - desktop/main.cjs
+  - desktop/icon.png
+  - src/**/*
+  - public/**/*
+  - package.json
+
+asar: true
+electronDist: node_modules/electron/dist
+npmRebuild: false
+nodeGypRebuild: false
+
+win:
+  icon: desktop/build/icon.ico
+  artifactName: AgentHarness-Setup-${version}-${arch}.${ext}
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Agent Harness
+
+linux:
+  icon: desktop/build/icon.png
+  executableName: agent-harness
+  artifactName: AgentHarness-${version}-${arch}.${ext}
+  category: Development
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]

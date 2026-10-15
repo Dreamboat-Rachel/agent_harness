@@ -3,13 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Penguin Harness Replica</title>
+    <title>Agent Harness</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="brand-mark">P</span><div><strong>Penguin</strong><small>Harness Replica</small></div></div>
+        <div class="brand"><span class="brand-mark">A</span><strong>Agent Harness</strong></div>
         <button id="new-session" class="primary-button" type="button">＋ 新建会话</button>
         <div id="sessions" class="sessions" aria-label="会话列表"></div>
         <div class="sidebar-foot"><span class="online-dot"></span>本地 Agent Runtime</div>
@@ -25,8 +25,10 @@
         </header>
         <div id="messages" class="messages"><div class="empty">创建会话后发送一条消息开始运行。</div></div>
         <form id="composer" class="composer">
-          <textarea id="input" rows="2" placeholder="输入任务，例如：读取 notes.txt 并总结"></textarea>
-          <button type="submit" class="send-button">发送</button>
+          <div class="composer-field">
+            <textarea id="input" rows="1" placeholder="输入任务，例如：读取 notes.txt 并总结"></textarea>
+            <button type="submit" class="send-button" title="发送" aria-label="发送" disabled><span aria-hidden="true">↑</span></button>
+          </div>
         </form>
       </section>
 
@@ -115,7 +117,7 @@
 
         <div class="panel" data-panel="config">
           <div class="section-title">模型接口</div>
-          <p class="hint config-hint">配置保存在项目根目录的 <code>.env</code>，只在本机使用。Key 不会再次显示。</p>
+          <p class="hint config-hint">配置保存在本机的 <code>.env</code> 中；桌面版使用当前用户的应用数据目录。Key 不会再次显示。</p>
           <form id="model-config-form" class="compact-form config-form">
             <label>接口地址<input id="model-base-url" type="url" required placeholder="https://api.example.com/v1" autocomplete="url" /></label>
             <label>模型名称<input id="model-name" required placeholder="模型 ID" autocomplete="off" /></label>

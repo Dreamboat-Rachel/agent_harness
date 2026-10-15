@@ -25,6 +25,8 @@ const PUBLIC_ROOT = path.join(ROOT, "public");
 const MARKED_BROWSER_FILE = path.join(ROOT, "node_modules", "marked", "lib", "marked.esm.js");
 const PORT = Number(process.env.PORT || 4371);
 const HOST = process.env.HOST || "127.0.0.1";
+const DESKTOP_TOKEN = process.env.PENGUIN_DESKTOP_TOKEN || "";
+const PORT_FILE = process.env.PENGUIN_PORT_FILE || "";
 let POLICY = process.env.TOOL_POLICY || "always-ask";
 const CONTEXT_LIMIT = Number(process.env.CONTEXT_CHAR_LIMIT || 60000);
 const MAX_TURNS = Number(process.env.MAX_TURNS || 20);
@@ -472,6 +474,13 @@ const server = http.createServer(async (req, res) => {
   const parts = url.pathname.split("/").filter(Boolean);
   try {
     if (!url.pathname.startsWith("/api/")) return serveStatic(res, url.pathname);
+    if (req.method === "POST" && url.pathname === "/api/desktop/shutdown") {
+      if (!DESKTOP_TOKEN) return json(res, 404, { error: "not found" });
+      if (req.headers.authorization !== `Bearer ${DESKTOP_TOKEN}`) return json(res, 403, { error: "forbidden" });
+      json(res, 202, { accepted: true });
+      setImmediate(() => shutdownServer());
+      return;
+    }
     if (req.method === "PUT" && url.pathname === "/api/config/runtime") {
       const origin = req.headers.origin;
       if (origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) return json(res, 403, { error: "跨站配置请求已拒绝" });
@@ -573,7 +582,34 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => console.log(`Penguin replica listening on http://${HOST}:${PORT}`));
+server.listen(PORT, HOST, async () => {
+  const address = server.address();
+  const actualPort = typeof address === "object" && address ? address.port : PORT;
+  try {
+    if (PORT_FILE) {
+      await fs.mkdir(path.dirname(PORT_FILE), { recursive: true });
+      await fs.writeFile(PORT_FILE, String(actualPort), "utf8");
+    }
+    console.log(`Agent Harness listening on http://${HOST}:${actualPort}`);
+  } catch (error) {
+    console.error(`Failed to announce server port: ${error.message}`);
+    server.close(() => process.exit(1));
+  }
+});
+
+function shutdownServer() {
+  for (const session of sessions.values()) {
+    session.abort?.abort();
+    for (const approval of session.approvals.values()) approval.resolve("aborted");
+    session.approvals.clear();
+  }
+  server.close(() => {
+    store.close();
+    process.exit(0);
+  });
+  server.closeAllConnections?.();
+  setTimeout(() => process.exit(0), 2000).unref();
+}
 
 function parseJsonObject(value) {
   const text = String(value || "").trim();

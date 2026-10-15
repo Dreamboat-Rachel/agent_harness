@@ -9,6 +9,125 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 
+const smoothSelects = new Map();
+
+function closeSmoothSelect(select, restoreFocus = false) {
+  const control = smoothSelects.get(select);
+  if (!control?.root.classList.contains("open")) return;
+  control.root.classList.remove("open");
+  control.trigger.setAttribute("aria-expanded", "false");
+  if (restoreFocus) control.trigger.focus();
+}
+
+function syncSmoothSelect(select) {
+  const control = smoothSelects.get(select);
+  if (!control) return;
+  const selected = select.selectedOptions[0] || [...select.options].find((option) => !option.hidden);
+  control.value.textContent = selected?.textContent || "请选择";
+  control.trigger.disabled = select.disabled;
+  control.options.forEach(({ option, button }) => {
+    const active = option === selected;
+    button.classList.toggle("selected", active);
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+  });
+}
+
+function openSmoothSelect(select) {
+  const control = smoothSelects.get(select);
+  if (!control || control.trigger.disabled) return;
+  smoothSelects.forEach((_, otherSelect) => { if (otherSelect !== select) closeSmoothSelect(otherSelect); });
+  const rect = control.trigger.getBoundingClientRect();
+  const menuHeight = Math.min(control.options.length * 42 + 12, window.innerHeight * 0.45, 248);
+  const dropUp = window.innerHeight - rect.bottom < menuHeight + 12 && rect.top > menuHeight + 12;
+  control.root.classList.toggle("drop-up", dropUp);
+  control.menu.style.top = `${dropUp ? Math.max(8, rect.top - menuHeight - 6) : Math.min(window.innerHeight - menuHeight - 8, rect.bottom + 6)}px`;
+  control.menu.style.left = `${Math.max(8, rect.left)}px`;
+  control.menu.style.width = `${rect.width}px`;
+  control.root.classList.add("open");
+  control.trigger.setAttribute("aria-expanded", "true");
+}
+
+function setupSmoothSelect(select) {
+  if (smoothSelects.has(select)) return;
+  const visibleOptions = [...select.options].filter((option) => !option.hidden);
+  const root = document.createElement("div");
+  root.className = "smooth-select";
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "smooth-select-trigger";
+  trigger.setAttribute("aria-haspopup", "listbox");
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.setAttribute("aria-label", select.closest("label")?.childNodes[0]?.textContent?.trim() || "选择选项");
+  trigger.innerHTML = '<span class="smooth-select-value"></span><span class="smooth-select-chevron" aria-hidden="true"></span>';
+  const menu = document.createElement("div");
+  menu.className = "smooth-select-menu";
+  menu.setAttribute("role", "listbox");
+  menu.setAttribute("aria-label", "选择选项");
+  const options = visibleOptions.map((option) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "smooth-select-option";
+    button.setAttribute("role", "option");
+    button.innerHTML = `<span>${escapeHtml(option.textContent)}</span><span class="smooth-select-check" aria-hidden="true">✓</span>`;
+    button.disabled = option.disabled;
+    button.addEventListener("click", () => {
+      if (select.value !== option.value) {
+        select.value = option.value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      syncSmoothSelect(select);
+      closeSmoothSelect(select, true);
+    });
+    menu.append(button);
+    return { option, button };
+  });
+  select.classList.add("native-select-proxy");
+  select.setAttribute("aria-hidden", "true");
+  select.tabIndex = -1;
+  select.insertAdjacentElement("afterend", root);
+  root.append(trigger, menu);
+  const control = { root, trigger, menu, value: trigger.querySelector(".smooth-select-value"), options };
+  smoothSelects.set(select, control);
+
+  trigger.addEventListener("click", () => root.classList.contains("open") ? closeSmoothSelect(select) : openSmoothSelect(select));
+  trigger.addEventListener("keydown", (event) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End", "Escape"].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === "Escape") return closeSmoothSelect(select);
+    openSmoothSelect(select);
+    const enabled = options.filter(({ button }) => !button.disabled);
+    const selectedIndex = Math.max(0, enabled.findIndex(({ option }) => option.value === select.value));
+    const index = event.key === "Home" ? 0 : event.key === "End" ? enabled.length - 1 : event.key === "ArrowUp" ? Math.max(0, selectedIndex - 1) : Math.min(enabled.length - 1, selectedIndex + 1);
+    enabled[index]?.button.focus();
+  });
+  menu.addEventListener("keydown", (event) => {
+    const enabled = options.filter(({ button }) => !button.disabled);
+    const index = enabled.findIndex(({ button }) => button === document.activeElement);
+    if (event.key === "Escape") { event.preventDefault(); closeSmoothSelect(select, true); }
+    else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const next = event.key === "ArrowDown" ? Math.min(enabled.length - 1, index + 1) : Math.max(0, index - 1);
+      enabled[next]?.button.focus();
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      enabled[event.key === "Home" ? 0 : enabled.length - 1]?.button.focus();
+    }
+  });
+  select.addEventListener("change", () => syncSmoothSelect(select));
+  syncSmoothSelect(select);
+}
+
+function setupSmoothSelects() {
+  document.querySelectorAll(".compact-form select").forEach(setupSmoothSelect);
+  document.addEventListener("pointerdown", (event) => {
+    smoothSelects.forEach((control, select) => { if (!control.root.contains(event.target)) closeSmoothSelect(select); });
+  });
+  window.addEventListener("resize", () => smoothSelects.forEach((_, select) => closeSmoothSelect(select)));
+  document.addEventListener("scroll", () => smoothSelects.forEach((_, select) => closeSmoothSelect(select)), true);
+  document.addEventListener("reset", () => requestAnimationFrame(() => smoothSelects.forEach((_, select) => syncSmoothSelect(select))));
+}
+
 async function api(path, options = {}) {
   const response = await fetch(`/api${path}`, {
     ...options,
@@ -49,7 +168,7 @@ function renderMessages() {
   const followOutput = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
   const messages = state.current?.messages || [];
   container.innerHTML = messages.length
-    ? messages.map((message) => `<article class="message ${escapeHtml(message.role)}"><div class="avatar">${message.role === "user" ? "你" : message.role === "tool" ? "T" : message.role === "system" ? "!" : "P"}</div><div class="message-body"><div class="message-meta">${escapeHtml(message.role)}${message.toolName ? ` · ${escapeHtml(message.toolName)}` : ""}</div><div class="message-content ${message.role === "assistant" ? "markdown-content" : "plain-content"}">${message.role === "assistant" ? renderMarkdown(message.content) : escapeHtml(message.content)}</div></div></article>`).join("")
+    ? messages.map((message) => `<article class="message ${escapeHtml(message.role)}"><div class="avatar">${message.role === "user" ? "你" : message.role === "tool" ? "T" : message.role === "system" ? "!" : "A"}</div><div class="message-body"><div class="message-meta">${escapeHtml(message.role)}${message.toolName ? ` · ${escapeHtml(message.toolName)}` : ""}</div><div class="message-content ${message.role === "assistant" ? "markdown-content" : "plain-content"}">${message.role === "assistant" ? renderMarkdown(message.content) : escapeHtml(message.content)}</div></div></article>`).join("")
     : '<div class="empty">创建会话后发送一条消息开始运行。</div>';
   if (followOutput) container.scrollTop = container.scrollHeight;
 }
@@ -61,7 +180,7 @@ function renderCurrent() {
   $("status").className = `status ${status}`;
   $("stop").disabled = status !== "running";
   $("input").disabled = !state.current;
-  document.querySelector(".send-button").disabled = !state.current;
+  updateComposer();
   $("input").placeholder = status === "running" ? "当前任务运行中…" : "输入任务，例如：读取 notes.txt 并总结";
   renderSessions();
   renderMessages();
@@ -73,6 +192,7 @@ function renderRuntime() {
   const info = state.capabilities;
   if (!info) return;
   $("approval-mode").value = info.policy;
+  syncSmoothSelect($("approval-mode"));
   $("runtime-stats").innerHTML = [
     ["模型", info.modelConfigured ? "已连接" : "演示模式"],
     ["记忆检索", info.memory?.mode === "vector" ? `向量 · ${info.memory.model}${info.memory.format ? ` · ${info.memory.format}` : ""}` : info.memory?.mode === "degraded" ? "向量异常，已降级" : "词法降级"],
@@ -82,6 +202,13 @@ function renderRuntime() {
     ["工作区", info.workspace]
   ].map(([label, value]) => `<div class="stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
   $("features").innerHTML = info.features.map((feature) => `<span class="tag">${escapeHtml(feature)}</span>`).join("");
+}
+
+function updateComposer() {
+  const input = $("input");
+  input.style.height = "auto";
+  input.style.height = `${Math.min(Math.max(input.scrollHeight, 36), 180)}px`;
+  document.querySelector(".send-button").disabled = !state.current || !input.value.trim();
 }
 
 function renderApprovals() {
@@ -263,6 +390,8 @@ function renderModelConfig() {
   $("embedding-dimensions").value = config.embeddingDimensions || "";
   $("embedding-format").value = config.embeddingFormat || "auto";
   $("tool-policy").value = config.policy || "always-ask";
+  syncSmoothSelect($("embedding-format"));
+  syncSmoothSelect($("tool-policy"));
   $("model-api-key").value = "";
   $("model-api-key").placeholder = config.apiKeyConfigured ? "已设置，留空则保持不变" : "粘贴你的 API Key";
   $("clear-model-key-row").classList.toggle("hidden", !config.apiKeyConfigured);
@@ -329,12 +458,14 @@ async function saveRuntimeSetting(input) {
     state.capabilities.policy = saved.policy;
     state.modelConfig.policy = saved.policy;
     $("tool-policy").value = saved.policy;
+    syncSmoothSelect($("tool-policy"));
     $("memory-auto-learn").checked = saved.memoryAutoLearn;
     renderRuntime();
     notify("设置已保存并立即生效");
   } catch (error) {
     const runtime = await api("/config/runtime");
     $("approval-mode").value = runtime.policy;
+    syncSmoothSelect($("approval-mode"));
     $("memory-auto-learn").checked = runtime.memoryAutoLearn;
     notify(error.message, "error");
   }
@@ -350,6 +481,7 @@ $("composer").addEventListener("submit", async (event) => {
   try {
     await api(`/sessions/${state.current.id}/tasks`, { method: "POST", body: JSON.stringify({ text: value }) });
     input.value = "";
+    updateComposer();
   } catch (error) { notify(error.message, "error"); }
 });
 
@@ -456,6 +588,9 @@ $("toggle-inspector").addEventListener("click", () => setInspector(true));
 $("close-inspector").addEventListener("click", () => setInspector(false));
 $("inspector-backdrop").addEventListener("click", () => setInspector(false));
 $("input").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); $("composer").requestSubmit(); } });
+$("input").addEventListener("input", updateComposer);
+
+setupSmoothSelects();
 
 try {
   [state.sessions] = await Promise.all([api("/sessions"), loadControlData()]);

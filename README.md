@@ -1,4 +1,4 @@
-# PenguinHarness Replica
+# Agent Harness
 
 这是一个可独立运行的 PenguinHarness 兼容复刻，用于理解和复现 Agent Harness 的核心运行链路。它不是把官方品牌或源码重新打包成另一个产品。
 
@@ -7,12 +7,22 @@
 - 根目录：轻量独立复刻，使用 LangGraph 编排专业记忆流程，适合学习和二次开发。
 - `agent_harness/`：Apache-2.0 的官方 `v0.2.13` 完整源码，固定在提交 `691ae72f423581e2be145210a942715c79a667ba`。
 
-## 运行根目录复刻
+## 项目结构
+
+```text
+./                    当前轻量复刻版（默认端口 4371）
+./agent_harness/      官方 v0.2.13 源码
+./data/               当前复刻版的运行数据与 Agent 工作区
+```
+
+下文除“运行官方源码”一节外，命令都在仓库根目录执行。
+
+## 快速启动根目录复刻
 
 要求 Node.js 24 或更高版本。命令工具的强隔离在 Windows 上使用 WSL2 + `bubblewrap`，在 Linux 上直接使用原生 `bubblewrap`；缺少它时聊天与文件工具仍可用，但命令工具会拒绝执行。首次运行先安装依赖：
 
 ```powershell
-npm install
+npm ci
 npm start
 ```
 
@@ -29,6 +39,107 @@ npm start
 ```
 
 默认工具策略是 `always-ask`，写文件、执行命令、修改记忆、子代理和 MCP 调用会出现在右侧“运行”面板等待审批。
+
+## Windows 桌面版（EXE）
+
+根目录现已包含 Electron 外壳。安装版会在本机启动内置服务并自动选择空闲端口，不需要另外打开 PowerShell，也不会占用 Web 版默认的 `4371` 端口。关闭桌面窗口时，内置服务会一同安全退出。
+
+开发调试：
+
+```powershell
+npm ci
+npm run desktop:dev
+```
+
+生成 Windows x64 安装包：
+
+```powershell
+npm ci
+npm run desktop:pack:win
+```
+
+安装包输出到 `desktop-dist/AgentHarness-Setup-<版本>-x64.exe`。安装时可选择目录，并会创建桌面和开始菜单快捷方式。当前安装包未做代码签名，Windows SmartScreen 可能显示“未知发布者”；正式分发时应配置可信代码签名证书。
+
+如果所在网络无法访问 GitHub 的 Electron 构建附件，可在当前 PowerShell 窗口临时使用镜像后重新执行安装或打包：
+
+```powershell
+$env:ELECTRON_MIRROR='https://npmmirror.com/mirrors/electron/'
+$env:ELECTRON_BUILDER_BINARIES_MIRROR='https://npmmirror.com/mirrors/electron-builder-binaries/'
+npm ci
+npm run desktop:pack:win
+```
+
+安装版已经包含 Electron/Node 运行时，最终用户不需要另装 Node.js。`run_command` 的强隔离仍依赖 WSL2 Ubuntu 和 Ubuntu 内的 `bubblewrap`；未安装时对话、记忆、文件、联网和 MCP 功能仍可用，只有命令执行会保持关闭。
+
+桌面版与 Web 版使用独立数据，避免相互覆盖：
+
+| 内容 | Windows 安装版位置 |
+| --- | --- |
+| 模型及工具密钥 | `%APPDATA%\Agent Harness\.env` |
+| SQLite、记忆、图谱、MCP | `%APPDATA%\Agent Harness\data` |
+| 运行日志 | `%APPDATA%\Agent Harness\desktop.log` |
+| Agent 文件与命令工作区 | `%USERPROFILE%\AgentHarnessWorkspace` |
+
+首次启动后，直接在“控制台 → 配置”中填写模型地址、模型名称和 Key。需要迁移或备份桌面版时，应同时保存上表中的 `.env`、`data` 和工作区。开发模式为了便于调试会读取仓库根目录 `.env`，但运行数据仍写到当前用户的 Electron 应用目录。
+
+还可用以下命令做打包前验证：
+
+```powershell
+npm run desktop:smoke
+npm run desktop:unpacked
+npm run desktop:smoke:packed
+```
+
+第一条命令验证开发模式，第二条生成无需安装的解包目录，第三条直接启动打包后的应用并在 `desktop-dist/desktop-packed-smoke.png` 留下截图。正式生成安装包前应至少执行一次打包版烟雾测试，它能发现运行依赖未被带入安装包的问题。
+
+可用下面的接口确认服务、模型、向量检索、命令沙箱和联网搜索状态：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:4371/api/capabilities
+```
+
+## Windows 部署
+
+### 1. 准备环境
+
+- 安装 Node.js 24 或更高版本，并确认 `node --version` 和 `npm --version` 可用。
+- 安装 WSL2 与 Ubuntu。尚未安装时，在管理员 PowerShell 中执行 `wsl --install -d Ubuntu`，按 Windows 提示重启并完成 Ubuntu 初始化。
+- 在 Ubuntu 中安装命令沙箱：
+
+```bash
+sudo apt update
+sudo apt install -y bubblewrap
+```
+
+Node 服务仍从 Windows PowerShell 启动，不需要把整个项目复制进 WSL。程序只会通过 WSL2 调用 `bubblewrap` 执行 `run_command`。
+
+### 2. 安装与配置
+
+在仓库根目录打开 PowerShell：
+
+```powershell
+npm ci
+Copy-Item .env.example .env
+notepad .env
+```
+
+也可以不手动编辑 `.env`，先运行服务，再在页面的“控制台 → 配置”中填写模型、向量、高德地图和博查搜索 Key。页面保存后立即生效。
+
+### 3. 启动与验证
+
+```powershell
+npm start
+```
+
+打开 <http://127.0.0.1:4371>，再检查运行能力：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:4371/api/capabilities
+```
+
+其中 `sandbox.available` 应为 `true`。如果为 `false`，聊天和文件工具仍能使用，但命令工具会保持关闭；优先检查 WSL 发行版名称是否与 `SANDBOX_WSL_DISTRO` 一致，以及 Ubuntu 内是否已安装 `bubblewrap`。
+
+前台窗口关闭后服务会停止。需要长期常驻时，可使用 Windows 服务管理器（例如 WinSW/NSSM）托管 `node src/server.mjs`；服务账户必须能访问项目目录、`data` 目录和 `wsl.exe`。当前仓库未内置 Windows 服务安装脚本。
 
 ## 配置模型
 
@@ -101,17 +212,125 @@ EMBEDDING_DIMENSIONS=1024
 
 ## Linux 部署
 
-Ubuntu/Debian 可直接部署，不需要 WSL：
+Electron 桌面包可在 Linux x64 构建：
+
+```bash
+npm ci
+npm run desktop:pack:linux
+```
+
+输出包含 AppImage 和 deb，桌面版数据默认位于 `${XDG_CONFIG_HOME:-~/.config}/Agent Harness`，工作区位于 `~/AgentHarnessWorkspace`。建议在 Linux 主机或对应 CI Runner 上构建 Linux 包；原生命令沙箱仍需系统安装 `bubblewrap`。下面的部署方式适用于不带桌面窗口、需要长期运行的 Web 服务。
+
+### 1. 前台部署
+
+Ubuntu/Debian 可直接使用原生 `bubblewrap`，不需要 WSL：
+
+先安装 Node.js 24 或更高版本，并用 `node --version` 确认版本。系统自带的 Node.js 如果低于 24，需要改用 NodeSource、nvm 或组织内部的软件源安装新版。
 
 ```bash
 sudo apt update
-sudo apt install -y bubblewrap
+sudo apt install -y bubblewrap ca-certificates
 cp .env.example .env
-npm install
+npm ci
 npm start
 ```
 
-服务仍默认只监听 `127.0.0.1:4371`。需要通过反向代理开放时，建议保持本进程监听本机地址，由 Nginx/Caddy 负责 HTTPS 和访问控制。Linux 内核必须允许非特权用户命名空间；若 `bubblewrap` 探测失败，命令工具会保持关闭，而不会在宿主 Shell 中执行。
+服务默认只监听 `127.0.0.1:4371`。验证命令：
+
+```bash
+curl http://127.0.0.1:4371/api/capabilities
+```
+
+Linux 内核必须允许非特权用户命名空间。若 `bubblewrap` 探测失败，命令工具会保持关闭，而不会回退到宿主 Shell。
+
+### 2. 使用 systemd 常驻
+
+生产环境建议把代码放在 `/opt/agent-harness`，把可写数据和 `.env` 放在 `/var/lib/agent-harness`，并使用单独的低权限账户运行。先准备目录和权限：
+
+```bash
+sudo useradd --system --create-home --home-dir /var/lib/agent-harness --shell /usr/sbin/nologin agent-harness
+sudo mkdir -p /var/lib/agent-harness/data/workspace
+sudo cp .env.example /var/lib/agent-harness/.env
+sudo chown -R agent-harness:agent-harness /opt/agent-harness /var/lib/agent-harness
+cd /opt/agent-harness
+sudo -u agent-harness npm ci --omit=dev
+```
+
+创建 `/etc/systemd/system/agent-harness.service`：
+
+```ini
+[Unit]
+Description=Agent Harness
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agent-harness
+Group=agent-harness
+WorkingDirectory=/opt/agent-harness
+Environment=PENGUIN_ENV_FILE=/var/lib/agent-harness/.env
+Environment=PENGUIN_HOME=/var/lib/agent-harness/data
+Environment=PENGUIN_WORKSPACE=/var/lib/agent-harness/data/workspace
+ExecStart=/usr/bin/node src/server.mjs
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+确认 `node` 的真实位置是 `/usr/bin/node`；若 `command -v node` 返回其他路径，应同步修改 `ExecStart`。然后启动：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now agent-harness
+sudo systemctl status agent-harness
+journalctl -u agent-harness -f
+```
+
+### 3. Nginx 反向代理
+
+当前应用没有用户登录和权限认证。不要直接设置 `HOST=0.0.0.0` 后把 `4371` 端口暴露到公网，因为配置、会话、记忆和工具接口都会同时暴露。应保持监听 `127.0.0.1`，在 Nginx/Caddy、VPN 或零信任网关层增加 HTTPS 与访问控制。
+
+Nginx 的核心代理配置如下；SSE 流式输出要求关闭代理缓冲：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:4371;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+}
+```
+
+TLS 证书、Basic Auth、VPN 或身份网关需在反向代理层配置。本项目当前不会替代理层鉴权。
+
+### 4. 备份与升级
+
+停止服务后备份 `.env` 和整个 `data` 目录；其中包含数据库、消息、记忆、知识图谱、定时任务、MCP 配置和 Agent 工作区。升级代码后重新安装锁定依赖并启动：
+
+```bash
+sudo systemctl stop agent-harness
+sudo cp -a /var/lib/agent-harness /var/lib/agent-harness.backup
+cd /opt/agent-harness
+sudo -u agent-harness npm ci --omit=dev
+sudo systemctl start agent-harness
+```
+
+Windows 同样应备份根目录 `.env` 与 `data`。不要只备份 `harness.db`，因为长期记忆、技能、Trace、MCP 配置和工作区还包含独立文件。
+
+### 5. 当前部署边界
+
+- 根目录复刻版是单机 Node.js + SQLite 应用，不要让多个进程或多台机器同时共享同一个 `data` 目录。
+- 没有内置登录、TLS、限流和多租户隔离；网络开放必须由反向代理、VPN 或身份网关保护。
+- `.env` 包含模型、向量、高德和博查密钥，应限制为仅运行账户可读，并且不要提交到版本库。
+- 根目录复刻版目前没有 Dockerfile 或 Compose 部署定义；官方源码子目录自带 Docker 方案。
+- macOS 可以启动 Web 服务，但当前命令沙箱依赖 Linux `bubblewrap`，因此 `run_command` 会 fail-closed，不属于完整支持的部署目标。
 
 模型可调用三个记忆工具：`search_memory`、`remember_fact` 和 `query_knowledge_graph`。管理接口包括：
 
@@ -141,6 +360,7 @@ npm start
 - HTTP/SSE MCP 的发现与调用
 - 博查 Web Search 联网查询，支持摘要、时间范围和结果数量参数
 - 响应式 Web 控制台：会话、审批、模型 `.env` 配置、记忆、技能、子代理、定时任务和 MCP 状态
+- Electron 桌面外壳、随机内置端口、单实例运行和 Windows/Linux 安装包构建
 
 ## 数据目录
 
@@ -196,7 +416,7 @@ npm run check
 npm test
 ```
 
-测试覆盖 SQLite 恢复和旧 Trace 迁移、知识库路径校验、LangGraph 记忆编排、模型 `.env` 配置及密钥保护、事实去重、召回排序、知识图谱、敏感信息拦截、会话/记忆/定时任务接口，以及等待审批时停止任务。
+测试覆盖 SQLite 恢复和旧 Trace 迁移、知识库路径校验、LangGraph 记忆编排、向量接口、模型 `.env` 配置及密钥保护、事实去重、召回排序、知识图谱、敏感信息拦截、Markdown 安全渲染、MCP、博查联网查询、bubblewrap 沙箱、会话接口，以及等待审批时停止任务。
 
 ## 与官方版的边界
 
@@ -209,9 +429,11 @@ npm test
 - PTY/WebSocket 交互终端
 - benchmark/evaluation 中心
 - 完整 token 统计、供应商重试与模型配置中心
-- Electron 打包和桌面自动更新
+- 桌面自动更新和安装包代码签名
 
-需要官方完整功能时直接运行 `agent_harness/`：
+## 运行官方源码
+
+需要官方完整功能时进入 `agent_harness/`：
 
 ```powershell
 cd agent_harness
@@ -220,3 +442,5 @@ pnpm dev
 ```
 
 官方桌面版使用 `pnpm desktop`。该源码要求 Node.js 24 和 pnpm 11。
+
+官方源码还包含独立的安装脚本、Dockerfile 与 `docker/compose.yaml`；具体生产部署以 [官方中文说明](./agent_harness/README.zh.md) 为准。官方版默认端口、数据目录和首次登录流程与根目录复刻版不同，不要混用两套 `.env` 或数据目录。
