@@ -1,0 +1,36 @@
+import { BaseMessage, BaseMessageChunk, BaseMessageFields } from "./base.js";
+import { $InferMessageContent, MessageStructure, MessageToolSet } from "./message.js";
+//#region src/messages/human.d.ts
+export interface HumanMessageFields<TStructure extends MessageStructure = MessageStructure> extends BaseMessageFields<TStructure, "human"> {}
+/**
+ * Represents a human message in a conversation.
+ */
+export declare class HumanMessage<TStructure extends MessageStructure = MessageStructure> extends BaseMessage<TStructure, "human"> {
+  static lc_name(): string;
+  readonly type: "human";
+  constructor(fields: $InferMessageContent<TStructure, "human"> | HumanMessageFields<TStructure>);
+  static isInstance(obj: unknown): obj is HumanMessage;
+  static [Symbol.hasInstance](obj: unknown): obj is HumanMessage<MessageStructure<MessageToolSet>>;
+}
+/**
+ * Represents a chunk of a human message, which can be concatenated with
+ * other human message chunks.
+ */
+export declare class HumanMessageChunk<TStructure extends MessageStructure = MessageStructure> extends BaseMessageChunk<TStructure, "human"> {
+  static lc_name(): string;
+  readonly type: "human";
+  constructor(fields: $InferMessageContent<TStructure, "human"> | HumanMessageFields<TStructure>);
+  concat(chunk: HumanMessageChunk<TStructure>): this;
+  static isInstance(obj: unknown): obj is HumanMessageChunk;
+  static [Symbol.hasInstance](obj: unknown): obj is HumanMessageChunk<MessageStructure<MessageToolSet>>;
+}
+/**
+ * @deprecated Use {@link HumanMessage.isInstance} instead
+ */
+export declare function isHumanMessage<TStructure extends MessageStructure>(x: BaseMessage): x is HumanMessage<TStructure>;
+/**
+ * @deprecated Use {@link HumanMessageChunk.isInstance} instead
+ */
+export declare function isHumanMessageChunk<TStructure extends MessageStructure>(x: BaseMessageChunk): x is HumanMessageChunk<TStructure>;
+//#endregion
+//# sourceMappingURL=human.d.ts.map

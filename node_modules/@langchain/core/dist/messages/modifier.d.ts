@@ -1,0 +1,30 @@
+import { BaseMessage, BaseMessageFields } from "./base.js";
+//#region src/messages/modifier.d.ts
+export interface RemoveMessageFields extends Omit<BaseMessageFields, "content"> {
+  /**
+   * The ID of the message to remove.
+   */
+  id: string;
+}
+/**
+ * Message responsible for deleting other messages.
+ *
+ * `RemoveMessage` is intentionally not generic over `MessageStructure`.
+ * Its content is always `[]` (empty), so carrying a structure type parameter
+ * would only cause unnecessary type incompatibilities when mixing messages
+ * from different structure configurations (e.g. passing a `RemoveMessage`
+ * into an API that expects `Message<CustomToolCall>`).
+ */
+export declare class RemoveMessage extends BaseMessage {
+  readonly type: "remove";
+  /**
+   * The ID of the message to remove.
+   */
+  id: string;
+  constructor(fields: RemoveMessageFields);
+  get _printableFields(): Record<string, unknown>;
+  static isInstance(obj: unknown): obj is RemoveMessage;
+  static [Symbol.hasInstance](obj: unknown): obj is RemoveMessage;
+}
+//#endregion
+//# sourceMappingURL=modifier.d.ts.map

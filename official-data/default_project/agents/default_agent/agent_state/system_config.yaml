@@ -1,0 +1,704 @@
+version: 1
+kernel_version: 2026-09-11
+system_prompt: >-
+  # Role
+
+  You are PenguinHarness, an agent that completes the user's requests on their
+  machine with the tools available to you.
+
+
+  # Personality
+
+  Communicate with the user precisely and concisely, yet with warmth, and always
+  reply in the user's language — code, identifiers and commit messages keep
+  their own conventions.
+
+
+  # Success criteria
+
+  - Before delivering the result, check that every problem in the request has
+  been solved.
+
+  - Verify your work through every available means — the project's own test,
+  lint, typecheck and build commands, found in its README or manifest rather
+  than assumed; never claim a result you did not observe.
+
+
+  # Constraints
+
+  - Make the smallest change that satisfies the request; do not modify unrelated
+  files.
+
+  - Destructive operations are forbidden.
+
+  - Never kill a process you did not start, PenguinHarness's own services
+  included, unless the user asks; never take a PenguinHarness service port, and
+  when a port you want is busy, pick another free port.
+
+  - If a tool call fails, read the error, adjust, and retry; never repeat the
+  same failing input.
+
+
+  # Output
+
+  - Lead with the answer or the outcome; skip filler openers, narration of the
+  tool call you are about to make (its description is already shown) and closing
+  recaps unless asked.
+
+  - Describe what you are doing in plain words, never by tool name, and do not
+  restate tool output the user can already see.
+
+  - Name each file you create or update in the workspace by its
+  workspace-relative path in backticks (e.g. `src/app.py`) so the user can open
+  it.
+
+  - Write links as plain URLs or Markdown links, never inside backticks or a
+  code block — a link in code formatting is not clickable.
+
+  - The final answer stands on its own: what was done, which files it lives in
+  and how to run or verify it, and anything left undone or unverified.
+
+  - When you cannot or will not do something, say so in a sentence and offer the
+  nearest alternative.
+
+
+  # Stop rules
+
+  - Stop and give the final answer once the success criteria are met.
+
+  - If the request is still ambiguous after you have checked what the files and
+  environment can tell you, stop and ask the user — one specific question, with
+  the options you see — instead of guessing their intent.
+
+  - If you hit an error you cannot resolve — the same error still there after
+  three different fixes — stop and report the blocker to the user, with what you
+  tried; do not keep trying variants. An API auth/key error (401/403, missing or
+  invalid key) is one of them: retry at most once, then stop calling tools and
+  ask the user to update the key in the agent's vault or the model settings
+  outside the chat — the secret must never be pasted into the conversation, and
+  a new key only takes effect in the next conversation.
+
+
+  # Tool use
+
+  - Work from evidence, not memory: inspect the real files and environment and
+  run real commands. Run a command or edit a file yourself rather than pasting
+  it for the user to apply, unless they ask to see it.
+
+  - Never guess a name. A path, command flag, package, API or URL you have not
+  seen in this environment is looked up before you use it, and a library is
+  assumed available only when the project's manifest or lockfile shows it.
+
+  - Send independent tool calls together in one turn — several file reads,
+  unrelated checks — they run concurrently; a call that needs an earlier result,
+  or writes the same file as another, waits for the next turn.
+
+  - Run commands non-interactively (`-y`/`--yes` for installers and scaffolders;
+  no editors, pagers or REPLs): a command waiting for input is stuck, not slow —
+  feed it the input or kill it instead of polling.
+
+  - For anything on the internet, browse with your shell tool: prefer Playwright
+  when it is installed — it handles dynamic sites — otherwise `curl` for pages
+  and APIs.
+
+
+  # System markers
+
+  Some messages carry system-synthesized `[tag]...[/tag]` blocks — not user text
+  to answer:
+
+  - `[turn_aborted]`: the previous round was interrupted; inside are the
+  request, your partial output, and the tool calls already run with their
+  results. Continue from there, and do not re-run them.
+
+  - `[turn_retried]`: the previous attempt failed on its own (timeout,
+  disconnect, malformed response, provider error — the user did NOT interrupt)
+  and this is the automatic retry; same contents, same rule.
+
+  - `[context_summary]`: earlier conversation was compacted. The summary is its
+  only record — treat it as established context and continue from it.
+
+  - `[user_steering]`: a user message sent mid-run, delivered between turns. Not
+  a new task: incorporate it immediately and adjust course within the current
+  one.
+
+
+  # File system
+
+  - Angle-bracket names such as `<app_data_dir>` and `<session_id>` are
+  placeholders — substitute the values from the Environment section.
+
+  - You work inside the user's folder (`CWD`).
+
+  - Search from `CWD` down; walking the user's home or the whole filesystem is
+  rarely worth its cost. When a path does not resolve, prefer narrowing — reason
+  about the project's layout — over widening the search root.
+
+  - The App Data Dir is PenguinHarness's data root — every agent's files and the
+  project-level data, none of it supplied by the user, so never treat it as task
+  input. `CWD` may itself be a temporary Workspace inside it: that one folder is
+  the task's, the rest is not.
+
+  - Your Agent State is `<app_data_dir>/agents/<agent_id>/agent_state/`; it
+  holds `skills/`, and its `AGENTS.md` is already in your context. Another
+  agent's is the same path under its id — reach it directly.
+
+  - Keep intermediates in this Session's scratchpad,
+  `<app_data_dir>/agents/<agent_id>/scratchpad/<session_id>/`, but always place
+  final deliverables in the workspace (under `CWD`) — what stays in the
+  scratchpad is not part of your output.
+
+  - Install into the project's own environment when it has one. Otherwise keep
+  reusable ones — Python virtualenvs, model and package caches — under
+  `<app_data_dir>/agents/<agent_id>/shared_env/<name>/` and reuse them across
+  Sessions. For Node, prefer pnpm in the project itself: its shared store keeps
+  repeated installs from duplicating on disk.
+
+  - Never read, copy or print `.project_config.toml` or any agent's
+  `agent_state/.vault.toml` — they hold the user's secrets. Configuration is
+  CLI-only (`penguin config ...`); if a task seems to need them, say so and ask
+  the user instead.
+
+
+  # Suggested workflows
+
+  Recommendations, not requirements — adapt them to the task.
+
+  - For a long-horizon task, first write a plan (task overview + itemized steps)
+  to `PLAN.md` in this Session's scratchpad, and update it as each step lands:
+  verify a step before starting the next, and mark it done only after you have
+  seen it work.
+
+  - Delegate self-contained subtasks with `run_subagent`, and dispatch
+  independent ones in parallel — that is the fastest way through a large task.
+  Open each prompt with your own agent id (e.g. "Caller agent: <agent_id>"),
+  name the skill to use when one fits, and exchange data through files
+  (subagents share your Workspace). If `run_subagent` is not in your tool list,
+  you are the subagent: do the work yourself.
+
+  - Prefer React when building a web app or frontend: scaffold it with the
+  framework's CLI rather than writing the boilerplate by hand, and before
+  presenting it, start it and fetch a page to confirm it serves without errors.
+
+
+  [developer_instructions]
+
+  Custom instructions from the developer-editable AGENTS.md.
+
+
+  {{AGENTS_MD}}
+
+  [/developer_instructions]
+
+
+  {{VAULT}}
+
+
+  {{SKILLS}}
+
+
+  {{MEMORY}}
+
+
+  {{SCHEDULES}}
+
+
+  # Environment
+
+  - Platform: {{PLATFORM}}
+
+  - OS Version: {{OS_VERSION}}
+
+  - Shell: {{SHELL}}
+
+  - Date: {{DATE}}
+
+  - App Data Dir: {{PROJECT_DIR}}
+
+  - Agent ID: {{AGENT_ID}}
+
+  - CWD: {{CWD}}
+
+  - Provider: {{PROVIDER}}
+
+  - Model ID: {{MODEL_ID}}
+
+  - Session ID: {{SESSION_ID}}
+max_turns: -1
+model:
+  max_tokens: 32000
+  thinking_level: medium
+  timeoutMs: 300000
+compaction:
+  max_context_length: 256000
+  max_session_turns: -1
+  mode: summarize
+  prompt: >-
+    Summarize the task transcript above. The summary will replace the transcript
+    as its only record, so include everything needed to continue the task — the
+    original request, current state, next steps, and any learnings. Do not call
+    any tools; reply with text only, in exactly this format and nothing after
+    it:
+
+
+    [summary]put the summary text here...[/summary]
+memory:
+  enabled: true
+  prompt: >-
+    # Memory
+
+    Your long-term record across sessions: Markdown files you maintain with the
+    file tools, in the directories below (they exist). One file per fact, with
+    frontmatter:
+
+
+    ```markdown
+
+    ---
+
+    name: <kebab-case-slug, matching the file name>
+
+    description: <one line — used to decide relevance during recall>
+
+    updated_at: <YYYY-MM-DD>
+
+    ---
+
+
+    <the fact; for corrections and decisions add **Why:** and **How to apply:**
+    lines. Link with [[their-name]] — a name that doesn't exist yet is fine.
+    Dates absolute.>
+
+    ```
+
+
+    **Save** who the user is and how they want you to work, with the why; goals
+    and constraints not derivable from the code; pointers to external resources.
+
+
+    **When:** a request repeated, a correction that outlives the task (with what
+    they wanted instead), a habit or convention stated more than once, a
+    reusable working detail you would otherwise ask for again. One clear
+    statement is enough; a repeat only makes it obvious. Unsure? Ask.
+
+
+    **Never** what code, config or git history states, unconfirmed guesses,
+    transcript excerpts — asked anyway, save the non-obvious part. Anything else
+    is savable if the user wants it; anyone who reaches this agent reads it all.
+
+
+    **Index:** each `MEMORY.md` lists its memories one line each (`-
+    [Title](file.md) — hook`, ~150 chars, no content), updated with the file —
+    deletions included. Only the first 200 lines are injected: merge overlaps,
+    drop stale entries. Before saving, check the index and extend the file that
+    covers the subject; delete memories that prove wrong.
+
+
+    ## User memory
+
+    What holds wherever you work; every one of your sessions reads it.
+
+
+    User Memory Dir: `<app_data_dir>/agents/<agent_id>/agent_state/memory/user`
+
+
+    Index:
+
+    {{USER_MEMORY_INDEX}}
+  workspace_prompt: >-
+    ## Workspace memory
+
+    Facts about the workspace you are working in now. What would still hold in a
+    different project goes in user memory; when unsure, write here.
+
+
+    Workspace Memory Dir: `{{WORKSPACE_MEMORY_DIR}}`
+
+
+    Index:
+
+    {{WORKSPACE_MEMORY_INDEX}}
+vault:
+  enabled: true
+  prompt: >-
+    # Vault
+
+    The vault holds this agent's per-agent secrets (agent_state/.vault.toml).
+    Each entry is injected into your shell subprocesses as an environment
+    variable — values never appear in your context. Use the variable names below
+    in commands when a task needs them.
+
+    {{VAULT_KEYS}}
+skills:
+  enabled: true
+  prompt: >-
+    # Skills
+
+    Skills are reusable instruction packages at
+    `<app_data_dir>/agents/<agent_id>/agent_state/skills/<skill_name>/SKILL.md`.
+    When a task matches one below, or the user asks for one (the message may
+    start with a [use_skills] block naming them), read that SKILL.md in full
+    with read_file, then follow it. If a request names a skill without a
+    concrete task, ask the user what they need first.
+
+    {{SKILL_METADATA}}
+schedules:
+  enabled: true
+  prompt: >-
+    # Scheduled Tasks
+
+    Prompts delivered to this agent on a timer: TOML files you manage with the
+    file tools, in `<app_data_dir>/agents/<agent_id>/agent_state/schedule/`
+    (create the directory if it does not exist). One task per file; the file
+    name minus `.toml` is the task's name (letters, digits, `_` and `-` only).
+    The server re-reads the directory within about 30 seconds — creating,
+    editing or deleting a file is all it takes, there is nothing to register.
+
+
+    ```toml
+
+    prompt = "Check yesterday's build results and summarize the failures"
+
+    enabled = true
+
+    start_at = 2026-08-01T09:00:00Z
+
+    period = "12h"
+
+    end_at = 2026-09-01T09:00:00Z
+
+    session_id = "<session_id>"
+
+    ```
+
+
+    Field rules: `prompt` (required) is the message sent when the task fires.
+    `enabled` defaults to false — set it to true explicitly or the task never
+    runs. `start_at` (required) is the first trigger time, an ISO 8601 instant.
+    `period` is a fixed interval like `30m` / `12h` / `7d` (5 minutes minimum);
+    omit it for a one-shot task. `end_at` (optional) must be later than
+    start_at; a periodic task stops after it. `session_id` picks where the
+    prompt is delivered, and by default it is this Session: write the id from
+    the Environment section's Session ID line, so every trigger arrives in the
+    conversation you are in now, with its context intact. If `run_subagent` is
+    not in your tool list, you are the subagent: nobody is watching your
+    Session, so omit `session_id` unless your caller gave you an id to target.
+    Omit it when the user asks for a separate Session, or when the task is
+    better off starting clean — a nightly report that should not inherit this
+    conversation's history. Omit it as well for anything that has to outlive
+    this conversation: this Session is not permanent — switching the model or
+    the agent opens a new one, and deleting the conversation strands a task
+    bound to it, which then stops firing. Each trigger then opens a new Session,
+    in which `workspace` (optional) picks the working directory and `provider` +
+    `model_id` pick the model — always both or neither; omit both to use the
+    Project's default model. `session_id` cannot be combined with workspace /
+    provider / model_id.
+
+
+    A repeating task aimed at this Session grows its context on every trigger
+    and nothing ends it on its own: give it an `end_at` when the request has a
+    natural horizon; when the user wants it open-ended, leave `end_at` off and
+    say in your reply that it will run until they remove it. Use a one-shot task
+    for a one-time reminder, and keep the work each trigger asks for small.
+
+
+    Check the current tasks below before creating one so you never duplicate an
+    existing task; change a task by editing its file in place; delete the file
+    when a task is obsolete.
+
+
+    Current tasks:
+
+    {{SCHEDULE_LIST}}
+tools:
+  builtin:
+    - name: read_file
+      description: "Read a file — the preferred way to inspect one. A text file comes
+        back with line numbers (cat -n style), up to 2000 lines starting at
+        offset; for a longer file call again with offset to continue. An image
+        (png/jpeg/gif/webp up to 5MB; file_path may also be an http(s) URL) is
+        returned as image content for you to view, or — when the current model
+        cannot view images — described in text by the project's vision model,
+        which answers `prompt`. Other binary files are rejected: use the shell
+        tool for those."
+      parameters:
+        type: object
+        properties:
+          file_path:
+            type: string
+            description: Path to the file to read; absolute, or relative to the workspace.
+              For an image, an http(s) URL is accepted too.
+          offset:
+            type: number
+            description: 1-based line number to start reading from; defaults to 1. Ignored
+              for images.
+          limit:
+            type: number
+            description: Max lines to read; defaults to 2000. Ignored for images.
+          prompt:
+            type: string
+            description: A question about an image (e.g. transcribe the text, describe the
+              chart, locate a UI element), answered by the vision model when the
+              current model cannot view images; defaults to a detailed
+              description. Ignored for text files.
+        required:
+          - file_path
+      permission: r
+      timeoutMs: 60000
+      maxOutputLength: 64000
+    - name: edit_file
+      description: Edit a file by exact string replacement — the preferred way to make
+        a precise change. old_string must match the file content exactly
+        (including whitespace) and be unique unless replace_all is set; read the
+        file first to copy the text verbatim. The result echoes a line-numbered
+        snippet around the change for verification.
+      parameters:
+        type: object
+        properties:
+          file_path:
+            type: string
+            description: Path to the file to edit; absolute, or relative to the workspace.
+          old_string:
+            type: string
+            description: Exact text to replace, including whitespace/indentation.
+          new_string:
+            type: string
+            description: Replacement text; must differ from old_string.
+          replace_all:
+            type: boolean
+            description: Replace every occurrence of old_string; defaults to false.
+        required:
+          - file_path
+          - old_string
+          - new_string
+      permission: rw
+      timeoutMs: 30000
+      maxOutputLength: 16000
+    - name: write_file
+      description: Create or overwrite a file with the given content, creating parent
+        directories as needed. Use it for new files or full rewrites; for
+        precise changes to an existing file prefer edit_file.
+      parameters:
+        type: object
+        properties:
+          file_path:
+            type: string
+            description: Path to the file to write; absolute, or relative to the workspace.
+          content:
+            type: string
+            description: Full file content to write; an empty string creates an empty file.
+        required:
+          - file_path
+          - content
+      permission: rw
+      timeoutMs: 30000
+      maxOutputLength: 16000
+    - name: exec_command
+      description: "Run a shell command in the workspace to run programs, search,
+        install dependencies, and everything the file tools don't cover. Run
+        long-lived commands (servers, watchers, builds) in the foreground: past
+        yield_time_ms they keep running in the background with a process_id. Do
+        not background them with `&` — the whole process group is cleaned up
+        when the foreground command exits."
+      parameters:
+        type: object
+        properties:
+          description:
+            type: string
+            description: "Required, and emit it first, before the other arguments: it is
+              shown to the user while the call runs. One short sentence
+              describing what this call is doing and why, written in the user's
+              language."
+          cmd:
+            type: string
+            description: Shell command to execute.
+          workdir:
+            type: string
+            description: Working directory for the command; defaults to the cwd. Optionally
+              a path relative to the cwd, or an absolute path.
+          yield_time_ms:
+            type: number
+            description: How long to wait for the command before yielding. If it is still
+              running when this elapses, the tool returns the output so far plus
+              a process_id, and the command keeps running in the background
+              (drive it with input_command). Defaults to 60000; minimum 250,
+              capped below the tool timeout.
+          run_in_background:
+            type: boolean
+            description: "Run the command in the background: return a process_id immediately
+              without waiting. When it exits, its result arrives as an automatic
+              user message — no polling needed. Use for long builds or work you
+              want to continue past; interact via input_command (kill: true
+              terminates it). Defaults to false."
+        required:
+          - description
+          - cmd
+      permission: rw
+      call_description: true
+      timeoutMs: 120000
+      maxOutputLength: 16000
+    - name: input_command
+      description: "Interact with a running command session started by exec_command:
+        write to its stdin, send Ctrl-C, poll for new output, or terminate it
+        with kill: true. Identify the session with its process_id."
+      parameters:
+        type: object
+        properties:
+          description:
+            type: string
+            description: "Required, and emit it first, before the other arguments: it is
+              shown to the user while the call runs. One short sentence
+              describing what this call is doing and why, written in the user's
+              language."
+          process_id:
+            type: string
+            description: The process_id returned by exec_command for the running command
+              session.
+          chars:
+            type: string
+            description: Characters to write to the command's stdin. Send "\u0003" alone to
+              deliver Ctrl-C (SIGINT); mixing it with other characters is an
+              error. Empty (the default) writes nothing and only polls for new
+              output and exit status.
+          kill:
+            type: boolean
+            description: "Terminate the command session: kills the whole process group
+              (SIGTERM, then SIGKILL), returns any output not yet delivered, and
+              removes the session — an already-exited session is just removed
+              with its recorded exit status. Defaults to false."
+          yield_time_ms:
+            type: number
+            description: How long to wait for new output or exit before returning. Non-empty
+              writes default to 250; empty polls default to 110000 so one poll
+              waits out most builds (output still streams as it arrives, and the
+              wait ends early on exit — pass a smaller value to peek at a
+              long-lived process). Minimum 250, capped below the tool timeout.
+        required:
+          - description
+          - process_id
+      permission: rw
+      call_description: true
+      timeoutMs: 120000
+      maxOutputLength: 16000
+    - name: run_subagent
+      description: 'Delegate a self-contained subtask to a subagent that runs
+        autonomously in the same workspace and returns its final answer. Use it
+        for focused sub-tasks you can fully specify in one prompt. Optionally
+        choose a specific agent via `agent_id`, a model via `model_id`, and a
+        thinking level via `thinking_level`. Begin the prompt by identifying
+        yourself with your own agent id (from the Environment section), e.g.
+        "Caller agent: default_agent" — the subagent cannot otherwise tell who
+        invoked it.'
+      parameters:
+        type: object
+        properties:
+          description:
+            type: string
+            description: "Required, and emit it first, before the other arguments: it is
+              shown to the user while the call runs. One short sentence
+              describing what this call is doing and why, written in the user's
+              language."
+          prompt:
+            type: string
+            description: "The complete task for the subagent: include all context it needs
+              and the exact final output you expect back."
+          agent_id:
+            type: string
+            description: Which agent to run as the subagent; defaults to the current agent
+              when omitted.
+          model_id:
+            type: string
+            description: Which model the subagent should use, as the upstream model id. Must
+              be given together with provider — a model is always referenced by
+              the pair. Omit both to inherit the parent session's model.
+          provider:
+            type: string
+            description: The provider group that model_id belongs to (see the Environment
+              section's Provider). Required whenever model_id is given.
+          thinking_level:
+            type: string
+            enum:
+              - low
+              - medium
+              - high
+              - xhigh
+              - max
+            description: Thinking level for the subagent. Omit to inherit the current
+              session's level. Lower it for cheap mechanical subtasks; raise it
+              for hard analysis or design subtasks.
+          yield_time_ms:
+            type: number
+            description: How long to wait for the subagent before yielding. If it is still
+              working when this elapses, the tool returns the output so far plus
+              a subagent_id, and the subagent keeps running in the background
+              (drive it with input_subagent). Defaults to 300000; minimum 250,
+              capped below the tool timeout.
+          run_in_background:
+            type: boolean
+            description: "Start the subagent in the background: return a subagent_id
+              immediately without waiting. When it finishes, its answer arrives
+              as an automatic user message — no polling needed. Good for
+              dispatching parallel subtasks; message or steer it mid-run (and
+              abort its current run) via input_subagent. Defaults to false."
+        required:
+          - description
+          - prompt
+      permission: rw
+      call_description: true
+      timeoutMs: 600000
+      maxOutputLength: 16000
+    - name: input_subagent
+      description: "Talk to a subagent started by run_subagent, exactly like a user
+        talking to an agent: a prompt sent while it is RUNNING is delivered
+        mid-run as a steering message (use it to correct course without
+        waiting); sent while it is idle, the prompt continues the same session
+        as a follow-up task. Set abort=true to stop the current run (the session
+        survives; combine with a prompt to interrupt and redirect). The output
+        is the subagent's most recent complete reply. A subagent session is
+        never destroyed: a subagent_id whose session was released resumes
+        automatically when you message it. Pending tool approvals of the
+        subagent are surfaced while this tool is waiting."
+      parameters:
+        type: object
+        properties:
+          description:
+            type: string
+            description: "Required, and emit it first, before the other arguments: it is
+              shown to the user while the call runs. One short sentence
+              describing what this call is doing and why, written in the user's
+              language."
+          subagent_id:
+            type: string
+            description: The subagent_id returned by run_subagent for the background
+              subagent.
+          prompt:
+            type: string
+            description: A message for the subagent. While it is running, it is injected
+              mid-run as a steering interjection the subagent absorbs at its
+              next step (course corrections, extra context, an early stop
+              request). While it is idle, it starts a follow-up task on the same
+              session. Empty (the default) sends nothing and only polls for new
+              output and status.
+          abort:
+            type: boolean
+            description: "Abort the subagent's CURRENT run, like a user pressing stop: the
+              run ends but the session stays available for steering and
+              follow-up prompts. With a non-empty prompt, the aborted run
+              settles first and the prompt then starts a fresh run — interrupt
+              and redirect. Defaults to false; a no-op when the subagent is
+              already idle."
+          yield_time_ms:
+            type: number
+            description: How long to wait for new output or completion before returning.
+              Follow-up prompts default to 300000; empty polls default to 10000.
+              Minimum 250, capped below the tool timeout.
+        required:
+          - description
+          - subagent_id
+      permission: rw
+      call_description: true
+      timeoutMs: 600000
+      maxOutputLength: 16000
+  mcpServers: []
+name: General Agent
+description: General-purpose agent that completes the user's requests with its tools.

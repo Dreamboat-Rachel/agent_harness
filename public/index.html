@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Penguin Harness Replica</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark">P</span><div><strong>Penguin</strong><small>Harness Replica</small></div></div>
+        <button id="new-session" class="primary-button" type="button">＋ 新建会话</button>
+        <div id="sessions" class="sessions" aria-label="会话列表"></div>
+        <div class="sidebar-foot"><span class="online-dot"></span>本地 Agent Runtime</div>
+      </aside>
+
+      <section class="conversation">
+        <header class="topbar">
+          <div class="session-heading"><span id="session-title">New Session</span><span id="status" class="status idle">idle</span></div>
+          <div class="topbar-actions">
+            <button id="toggle-inspector" class="icon-button inspector-toggle" type="button" title="打开控制台" aria-label="打开控制台">☷</button>
+            <button id="stop" class="icon-button" type="button" title="停止任务" aria-label="停止任务">■</button>
+          </div>
+        </header>
+        <div id="messages" class="messages"><div class="empty">创建会话后发送一条消息开始运行。</div></div>
+        <form id="composer" class="composer">
+          <textarea id="input" rows="2" placeholder="输入任务，例如：读取 notes.txt 并总结"></textarea>
+          <button type="submit" class="send-button">发送</button>
+        </form>
+      </section>
+
+      <aside id="inspector" class="inspector">
+        <div class="inspector-head"><strong>控制台</strong><button id="close-inspector" class="icon-button inspector-close" type="button" aria-label="关闭控制台">×</button></div>
+        <div class="tabs" role="tablist">
+          <button class="tab active" type="button" data-tab="runtime">运行</button>
+          <button class="tab" type="button" data-tab="memory">记忆</button>
+          <button class="tab" type="button" data-tab="agents">子代理</button>
+          <button class="tab" type="button" data-tab="schedules">定时</button>
+          <button class="tab" type="button" data-tab="graph">图谱</button>
+          <button class="tab" type="button" data-tab="mcp">MCP</button>
+          <button class="tab" type="button" data-tab="config">配置</button>
+        </div>
+
+        <div class="panel active" data-panel="runtime">
+          <div class="section-title">运行状态</div>
+          <div id="runtime-stats"></div>
+          <label class="compact-form section-gap">审批模式<select id="approval-mode"><option value="always-ask">请求批准审批</option><option value="assistant-approve">帮我批准审批</option><option value="allow-all">直接审批通过</option><option value="workspace-write" hidden>旧模式：工作区自动允许</option><option value="read-only" hidden>旧模式：只读</option><option value="deny-all" hidden>旧模式：全部拒绝</option></select></label>
+          <p class="hint">帮我批准：助手检查操作与当前任务是否一致；不确定时仍请你确认。直接通过：跳过审批，命令仍受沙箱限制。</p>
+          <div id="approval-review-status" class="hint" role="status"></div>
+          <div class="section-title section-gap">待审批</div>
+          <div id="approvals" class="stack-list"><div class="panel-empty">暂无待审批操作</div></div>
+          <div class="section-title section-gap">能力</div>
+          <div id="features" class="tag-list"></div>
+        </div>
+
+        <div class="panel" data-panel="memory">
+          <div class="panel-toolbar"><div><div class="section-title">长期记忆</div><small>会注入每次模型请求</small></div><button id="save-memory" class="small-button" type="button">保存</button></div>
+          <textarea id="memory-editor" class="editor" spellcheck="false" aria-label="长期记忆"></textarea>
+          <div id="memory-stats" class="memory-stats"></div>
+          <form id="memory-search-form" class="inline-form section-gap">
+            <label class="sr-only" for="memory-search">搜索语义记忆</label>
+            <input id="memory-search" placeholder="搜索语义记忆" />
+            <button class="small-button" type="submit">搜索</button>
+          </form>
+          <div id="memory-facts" class="stack-list"></div>
+          <details class="memory-add">
+            <summary>添加结构化记忆</summary>
+            <form id="memory-fact-form" class="compact-form">
+              <label>内容<textarea id="memory-fact-content" required rows="3" placeholder="用户偏好简洁、直接的回答"></textarea></label>
+              <label>类型<select id="memory-fact-kind"><option value="preference">偏好</option><option value="profile">资料</option><option value="project">项目</option><option value="decision">决策</option><option value="constraint">约束</option><option value="fact">事实</option></select></label>
+              <button class="primary-button" type="submit">保存结构化记忆</button>
+            </form>
+          </details>
+          <div class="section-title section-gap">已安装技能</div>
+          <div id="skills" class="stack-list"></div>
+        </div>
+
+        <div class="panel" data-panel="agents">
+          <div class="section-title">当前会话的子代理</div>
+          <div id="subagents" class="stack-list"><div class="panel-empty">暂无子代理运行记录</div></div>
+        </div>
+
+        <div class="panel" data-panel="schedules">
+          <form id="schedule-form" class="compact-form">
+            <label>名称<input id="schedule-name" required placeholder="每日整理" /></label>
+            <label>任务<textarea id="schedule-prompt" required rows="3" placeholder="整理工作区中的变更"></textarea></label>
+            <label>间隔（分钟）<input id="schedule-interval" required type="number" min="1" value="60" /></label>
+            <label class="check-row"><input id="schedule-current" type="checkbox" checked />使用当前会话</label>
+            <button class="primary-button" type="submit">创建定时任务</button>
+          </form>
+          <div class="section-title section-gap">任务列表</div>
+          <div id="schedules" class="stack-list"></div>
+        </div>
+
+        <div class="panel" data-panel="graph">
+          <label class="check-row"><input id="memory-auto-learn" type="checkbox" />自动学习用户提供的长期信息</label>
+          <p class="hint">新事实会增加图谱；重复事实会合并。关闭后停止自动新增，仍可手动添加记忆。删除记忆会隐藏仅由该记忆支持的关系。</p>
+          <form id="graph-search-form" class="inline-form">
+            <label class="sr-only" for="graph-search">筛选知识图谱</label>
+            <input id="graph-search" placeholder="筛选实体或关系" />
+            <button class="small-button" type="submit">筛选</button>
+          </form>
+          <div id="graph-summary" class="graph-summary"></div>
+          <div id="graph-canvas" class="graph-canvas" aria-live="polite"></div>
+          <div class="section-title section-gap">关系</div>
+          <div id="graph-relations" class="relation-list"></div>
+        </div>
+
+        <div class="panel" data-panel="mcp">
+          <div class="panel-toolbar"><div><div class="section-title">MCP 服务</div><small>HTTP / JSON-RPC</small></div><button id="refresh-mcp" class="icon-button" type="button" title="刷新 MCP" aria-label="刷新 MCP">↻</button></div>
+          <div id="mcp-servers" class="stack-list"></div>
+          <p class="hint">在 <code>data/mcp.json</code> 中配置服务，然后刷新。</p>
+        </div>
+
+        <div class="panel" data-panel="config">
+          <div class="section-title">模型接口</div>
+          <p class="hint config-hint">配置保存在项目根目录的 <code>.env</code>，只在本机使用。Key 不会再次显示。</p>
+          <form id="model-config-form" class="compact-form config-form">
+            <label>接口地址<input id="model-base-url" type="url" required placeholder="https://api.example.com/v1" autocomplete="url" /></label>
+            <label>模型名称<input id="model-name" required placeholder="模型 ID" autocomplete="off" /></label>
+            <label>API Key<input id="model-api-key" type="password" placeholder="尚未设置" autocomplete="new-password" /></label>
+            <label id="clear-model-key-row" class="check-row hidden"><input id="clear-model-key" type="checkbox" />清除已保存的 API Key</label>
+            <label>向量模型<input id="embedding-model" placeholder="例如 qwen3.7-text-embedding-flash" autocomplete="off" /></label>
+            <label>向量接口<input id="embedding-base-url" type="url" placeholder="可填写完整的 text-embedding URL" autocomplete="url" /></label>
+            <label>接口格式<select id="embedding-format"><option value="auto">自动识别</option><option value="dashscope">DashScope / 千问</option><option value="openai">OpenAI-compatible</option></select></label>
+            <label>向量维度<input id="embedding-dimensions" type="number" min="1" step="1" placeholder="留空使用模型默认维度" inputmode="numeric" /></label>
+            <label>向量 API Key<input id="embedding-api-key" type="password" placeholder="默认复用上面的 API Key" autocomplete="new-password" /></label>
+            <label id="clear-embedding-key-row" class="check-row hidden"><input id="clear-embedding-key" type="checkbox" />清除已保存的向量 API Key</label>
+            <p class="hint policy-hint">千问专用接口会发送 <code>input.texts</code>，也支持在 <code>.env</code> 中使用 <code>DASHSCOPE_API_KEY</code>。</p>
+            <label>高德地图 MCP Key<input id="amap-api-key" type="password" placeholder="在高德开放平台申请的 Web 服务 Key" autocomplete="new-password" /></label>
+            <label id="clear-amap-key-row" class="check-row hidden"><input id="clear-amap-key" type="checkbox" />清除已保存的高德地图 Key</label>
+            <p class="hint policy-hint">保存后会自动连接高德地图 MCP，提供地理编码、路线规划、天气、周边搜索等地图工具。</p>
+            <label>博查搜索 Key<input id="bocha-api-key" type="password" placeholder="在博查开放平台申请的 API Key" autocomplete="new-password" /></label>
+            <label id="clear-bocha-key-row" class="check-row hidden"><input id="clear-bocha-key" type="checkbox" />清除已保存的博查搜索 Key</label>
+            <p class="hint policy-hint">保存后模型可使用博查联网搜索，查询实时新闻、赛程和最新网页信息。</p>
+            <label>审批模式<select id="tool-policy"><option value="always-ask">请求批准审批</option><option value="assistant-approve">帮我批准审批</option><option value="allow-all">直接审批通过</option><option value="workspace-write" hidden>旧模式：工作区自动允许</option><option value="read-only" hidden>旧模式：只读</option><option value="deny-all" hidden>旧模式：全部拒绝</option></select></label>
+            <p class="hint policy-hint">命令获批后仍在 WSL2 + bubblewrap 中执行：工作区映射到 /workspace，使用 Bash 和 python3；其他宿主目录未挂载，默认禁止联网。MCP 工具在各自服务端执行。</p>
+            <div id="model-config-status" class="config-status" role="status"></div>
+            <button class="primary-button" type="submit">保存模型配置</button>
+          </form>
+        </div>
+      </aside>
+      <button id="inspector-backdrop" class="backdrop" type="button" aria-label="关闭控制台"></button>
+      <div id="toast" class="toast" role="status"></div>
+    </main>
+    <script type="importmap">{"imports":{"marked":"/vendor/marked.esm.js"}}</script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

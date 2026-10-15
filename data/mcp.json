@@ -1,0 +1,9 @@
+{
+  "servers": [
+    {
+      "name": "amap-maps",
+      "url": "https://mcp.amap.com/mcp?key={{AMAP_MAPS_API_KEY}}",
+      "enabled": true
+    }
+  ]
+}

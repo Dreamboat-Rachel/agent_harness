@@ -1,0 +1,4 @@
+#!/bin/sh
+# penguin CLI shim, rewritten by the PenguinHarness server at every start.
+# Runs the CLI of the harness that serves this data root, on that server's own runtime.
+exec 'C:\Program Files\nodejs\node.exe' 'C:\downloads\deepseek-workspace\agent_harness\agent_harness\packages\cli\dist\penguin.js' "$@"

@@ -1,0 +1,316 @@
+import type {
+  LanguageModelV2Middleware,
+  LanguageModelV2StreamPart,
+  LanguageModelV2CallOptions,
+  LanguageModelV2Message,
+  SharedV2ProviderMetadata,
+  LanguageModelV2FinishReason,
+} from "@ai-sdk/provider";
+import type { RunTree, RunTreeConfig } from "../../run_trees.js";
+import { getCurrentRunTree, traceable } from "../../traceable.js";
+import {
+  convertMessageToTracedFormat,
+  setUsageMetadataOnRunTree,
+} from "./utils.js";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _formatTracedInputs = (params: LanguageModelV2CallOptions) => {
+  const { prompt, ...rest } = params;
+  if (prompt == null) {
+    return params;
+  }
+  if (Array.isArray(prompt)) {
+    return {
+      ...rest,
+      messages: prompt.map((message) => convertMessageToTracedFormat(message)),
+    };
+  }
+  return rest;
+};
+
+const _formatTracedOutputs = (
+  outputs: Record<string, unknown>,
+  includeHttpDetails = false,
+) => {
+  let formattedOutputs: Record<string, unknown>;
+
+  if (includeHttpDetails) {
+    // Include all fields including raw request/response/usage
+    formattedOutputs = { ...outputs };
+  } else {
+    // Extract only the fields we want to trace, excluding raw request/response/usage
+    const { request: _, response: __, ...messageFields } = outputs;
+    formattedOutputs = { ...messageFields };
+  }
+
+  if (formattedOutputs.role == null) {
+    formattedOutputs.role = formattedOutputs.type ?? "assistant";
+  }
+  return convertMessageToTracedFormat(
+    formattedOutputs as LanguageModelV2Message,
+  );
+};
+
+type StandardTextBlock = { type: "text"; text: string };
+type StandardReasoningBlock = {
+  type: "reasoning";
+  reasoning: string;
+  extras?: Record<string, unknown>;
+};
+
+export type AggregatedDoStreamOutput = {
+  content: (StandardReasoningBlock | StandardTextBlock)[];
+  role: "assistant";
+  tool_calls: {
+    id: string;
+    type: "function";
+    function: {
+      name: string;
+      arguments: string;
+    };
+  }[];
+  providerMetadata?: SharedV2ProviderMetadata;
+  finishReason?: LanguageModelV2FinishReason;
+};
+
+/**
+ * AI SDK middleware that wraps an AI SDK 6 or 5 model and adds LangSmith tracing.
+ */
+export function LangSmithMiddleware(config?: {
+  name: string;
+  modelId?: string;
+  lsConfig?: Partial<Omit<RunTreeConfig, "inputs" | "outputs" | "run_type">> & {
+    processInputs?: (
+      inputs: Record<string, unknown>,
+    ) => Record<string, unknown>;
+    processOutputs?: (
+      outputs: Record<string, unknown>,
+    ) => Record<string, unknown> | Promise<Record<string, unknown>>;
+    traceRawHttp?: boolean;
+  };
+}): LanguageModelV2Middleware {
+  const { name, modelId, lsConfig } = config ?? {};
+
+  return {
+    wrapGenerate: async ({ doGenerate, params }) => {
+      const traceableFunc = traceable(
+        async (_params: typeof params) => {
+          const result = await doGenerate();
+          const currentRunTree = getCurrentRunTree(true);
+          if (currentRunTree !== undefined) {
+            setUsageMetadataOnRunTree(result, currentRunTree);
+          }
+          return result;
+        },
+        {
+          ...lsConfig,
+          name: name ?? "ai.doGenerate",
+          run_type: "llm",
+          metadata: {
+            ls_integration: "vercel-ai-sdk",
+            ls_model_name: modelId,
+            ai_sdk_method: "ai.doGenerate",
+            ...lsConfig?.metadata,
+          },
+          processInputs: (inputs) => {
+            const typedInputs = inputs as LanguageModelV2CallOptions;
+            const inputFormatter =
+              lsConfig?.processInputs ?? _formatTracedInputs;
+            return inputFormatter(typedInputs);
+          },
+          processOutputs: (outputs) => {
+            const typedOutputs = outputs as Awaited<
+              ReturnType<typeof doGenerate>
+            >;
+            if (lsConfig?.processOutputs) {
+              return lsConfig.processOutputs(typedOutputs);
+            }
+            return _formatTracedOutputs(typedOutputs, lsConfig?.traceRawHttp);
+          },
+        },
+      );
+      const res = await traceableFunc(params);
+      return res;
+    },
+    wrapStream: async ({ doStream, params }) => {
+      const parentRunTree = getCurrentRunTree(true);
+      let runTree: RunTree | undefined;
+      if (
+        parentRunTree != null &&
+        typeof parentRunTree === "object" &&
+        typeof parentRunTree.createChild === "function"
+      ) {
+        const inputFormatter = lsConfig?.processInputs ?? _formatTracedInputs;
+        const formattedInputs = inputFormatter(params);
+        runTree = parentRunTree?.createChild({
+          ...lsConfig,
+          name: name ?? "ai.doStream",
+          run_type: "llm",
+          metadata: {
+            ls_integration: "vercel-ai-sdk",
+            ls_model_name: modelId,
+            ai_sdk_method: "ai.doStream",
+            ...lsConfig?.metadata,
+          },
+          inputs: formattedInputs,
+        });
+      }
+
+      await runTree?.postRun();
+      try {
+        const { stream, ...rest } = await doStream();
+        const chunks: LanguageModelV2StreamPart[] = [];
+        const transformStream = new TransformStream({
+          async transform(chunk: LanguageModelV2StreamPart, controller) {
+            if (
+              chunk.type === "tool-input-start" ||
+              chunk.type === "text-start"
+            ) {
+              // Only necessary to log the first token event
+              if (
+                runTree?.events == null ||
+                (Array.isArray(runTree.events) && runTree.events.length === 0)
+              ) {
+                runTree?.addEvent({ name: "new_token" });
+              }
+            } else if (chunk.type === "finish") {
+              runTree?.addEvent({ name: "end" });
+            }
+            chunks.push(chunk);
+            controller.enqueue(chunk);
+          },
+
+          async flush() {
+            try {
+              const output = chunks.reduce(
+                (aggregated: AggregatedDoStreamOutput, chunk) => {
+                  if (chunk.type === "text-delta") {
+                    if (aggregated.content.at(-1)?.type !== "text") {
+                      aggregated.content.push({ type: "text", text: "" });
+                    }
+                    const contentBlock = aggregated.content.at(
+                      -1,
+                    ) as NonNullable<StandardTextBlock>;
+                    if (chunk.delta != null) {
+                      contentBlock.text += chunk.delta;
+                    } else if (
+                      "textDelta" in chunk &&
+                      chunk.textDelta != null
+                    ) {
+                      // AI SDK 4 shim
+                      contentBlock.text += chunk.textDelta;
+                    }
+                    return aggregated;
+                  } else if (chunk.type === "reasoning-delta") {
+                    if (aggregated.content.at(-1)?.type !== "reasoning") {
+                      aggregated.content.push({
+                        type: "reasoning",
+                        reasoning: "",
+                        extras: chunk.providerMetadata,
+                      });
+                    }
+                    const reasoningBlock = aggregated.content.at(
+                      -1,
+                    ) as NonNullable<StandardReasoningBlock>;
+                    if (chunk.delta != null) {
+                      reasoningBlock.reasoning += chunk.delta;
+                    }
+                    return aggregated;
+                  } else if (chunk.type === "tool-call") {
+                    const matchingToolCall = aggregated.tool_calls.find(
+                      (call) => call.id === chunk.toolCallId,
+                    );
+                    if (matchingToolCall != null) {
+                      return aggregated;
+                    }
+                    let chunkArgs = chunk.input;
+                    if (
+                      chunkArgs == null &&
+                      "args" in chunk &&
+                      typeof chunk.args === "string"
+                    ) {
+                      chunkArgs = chunk.args;
+                    }
+                    return {
+                      ...aggregated,
+                      tool_calls: [
+                        ...aggregated.tool_calls,
+                        {
+                          id: chunk.toolCallId,
+                          type: "function" as const,
+                          function: {
+                            name: chunk.toolName,
+                            arguments: chunkArgs,
+                          },
+                        },
+                      ],
+                    };
+                  } else if (chunk.type === "finish") {
+                    if (runTree != null) {
+                      setUsageMetadataOnRunTree(chunk, runTree);
+                    }
+                    return {
+                      ...aggregated,
+                      providerMetadata: chunk.providerMetadata,
+                      finishReason: chunk.finishReason,
+                    };
+                  } else {
+                    return aggregated;
+                  }
+                },
+                {
+                  content: [],
+                  role: "assistant",
+                  tool_calls: [],
+                },
+              );
+              // Add raw request/response for tracing only (not part of aggregated output)
+              const outputForTracing: Record<string, unknown> = {
+                ...output,
+                request: rest.request,
+                response: rest.response,
+              };
+              if (
+                "content" in outputForTracing &&
+                Array.isArray(outputForTracing.content) &&
+                outputForTracing.content.length === 1 &&
+                outputForTracing.content[0].type === "text"
+              ) {
+                outputForTracing.content = outputForTracing.content[0].text;
+              }
+              let formattedOutputs: Record<string, unknown>;
+              if (lsConfig?.processOutputs) {
+                formattedOutputs =
+                  await lsConfig.processOutputs(outputForTracing);
+              } else {
+                formattedOutputs = _formatTracedOutputs(
+                  outputForTracing,
+                  lsConfig?.traceRawHttp,
+                );
+              }
+              await runTree?.end(formattedOutputs);
+            } catch (error: any) {
+              await runTree?.end(undefined, error.message ?? String(error));
+              throw error;
+            } finally {
+              await runTree?.patchRun({
+                excludeInputs: true,
+              });
+            }
+          },
+        });
+
+        return {
+          stream: stream.pipeThrough(transformStream),
+          ...rest,
+        };
+      } catch (error: any) {
+        await runTree?.end(undefined, error.message ?? String(error));
+        await runTree?.patchRun({
+          excludeInputs: true,
+        });
+        throw error;
+      }
+    },
+  };
+}

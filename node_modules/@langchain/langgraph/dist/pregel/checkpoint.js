@@ -1,0 +1,67 @@
+import { deltaChannelsToSnapshot, isDeltaChannel } from "../channels/base.js";
+//#region src/pregel/checkpoint.ts
+/**
+* `counters_since_delta_snapshot` after one more superstep: every delta
+* channel gains a superstep, and the ones in `updatedChannels` an update.
+*/
+function advanceDeltaCounters(channels, updatedChannels, counters) {
+	const next = {};
+	for (const name in channels) {
+		if (!Object.prototype.hasOwnProperty.call(channels, name) || !isDeltaChannel(channels[name])) continue;
+		const [updates, supersteps] = counters?.[name] ?? [0, 0];
+		next[name] = [updatedChannels.has(name) ? updates + 1 : updates, supersteps + 1];
+	}
+	return next;
+}
+/** The metadata entry for `counters`, which an empty set leaves out. */
+function deltaCountersMetadata(counters) {
+	return Object.keys(counters).length > 0 ? { counters_since_delta_snapshot: counters } : {};
+}
+/**
+* The delta channels a checkpoint `updateState` saves after `saved` must
+* snapshot, and its `counters_since_delta_snapshot` metadata. The checkpoint
+* counts as a superstep, so a channel that reaches its bound snapshots, and
+* so does every channel in `forkChannels`. A new thread has no checkpoint to
+* hold the writes, so it snapshots every delta channel it wrote instead.
+*/
+function updateStateDeltaPlan(channels, updatedChannels, saved, channelVersions, deltaWritesVersioned, forkChannels) {
+	if (saved === void 0) {
+		const channelsToSnapshot = /* @__PURE__ */ new Set();
+		for (const name in channels) if (Object.prototype.hasOwnProperty.call(channels, name) && isDeltaChannel(channels[name]) && channels[name].isAvailable() && channelVersions[name] !== void 0) channelsToSnapshot.add(name);
+		return {
+			channelsToSnapshot,
+			metadata: {}
+		};
+	}
+	const counters = advanceDeltaCounters(channels, updatedChannels, saved.metadata?.counters_since_delta_snapshot);
+	const channelsToSnapshot = deltaChannelsToSnapshot(channels, counters, deltaWritesVersioned ? channelVersions : void 0);
+	for (const name of forkChannels) channelsToSnapshot.add(name);
+	for (const name of channelsToSnapshot) delete counters[name];
+	return {
+		channelsToSnapshot,
+		metadata: deltaCountersMetadata(counters)
+	};
+}
+/**
+* Whether the thread has moved past `saved`, the checkpoint `config`
+* addressed.
+*
+* A checkpoint with a child is never the latest put, so this misses none. A
+* leaf of an abandoned branch counts as well; telling it apart would mean
+* listing the thread to look for children, which the saver can't do cheaply.
+*/
+async function checkpointSuperseded(saver, config, saved) {
+	if (!config.configurable?.checkpoint_id) return false;
+	const latest = await saver.getTuple({
+		...config,
+		configurable: {
+			...config.configurable,
+			checkpoint_id: void 0
+		}
+	});
+	return latest !== void 0 && latest.checkpoint.id !== saved.checkpoint.id;
+}
+//#endregion
+export { advanceDeltaCounters, checkpointSuperseded, deltaCountersMetadata, updateStateDeltaPlan };
+
+//# sourceMappingURL=checkpoint.js.map

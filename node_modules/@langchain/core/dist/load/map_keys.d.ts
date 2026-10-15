@@ -1,0 +1,6 @@
+//#region src/load/map_keys.d.ts
+export interface SerializedFields {
+  [key: string]: any;
+}
+//#endregion
+//# sourceMappingURL=map_keys.d.ts.map

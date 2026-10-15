@@ -1,0 +1,195 @@
+// Relaxed UUID validation regex (allows any valid UUID format including nil UUIDs)
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+import { v7 as uuidv7 } from "./uuid/src/index.js";
+import { warnOnce } from "./warn.js";
+import { XXH3_128, xxh128ToBytes } from "./xxhash/xxhash.js";
+
+let UUID7_WARNING_EMITTED = false;
+
+export function assertUuid(str: string, which?: string): string {
+  // Use relaxed regex validation instead of strict uuid.validate()
+  // This allows edge cases like nil UUIDs or test UUIDs that might not pass strict validation
+  if (!UUID_REGEX.test(str)) {
+    const msg =
+      which !== undefined
+        ? `Invalid UUID for ${which}: ${str}`
+        : `Invalid UUID: ${str}`;
+    throw new Error(msg);
+  }
+  return str;
+}
+
+/**
+ * Generate a UUID v7 from a timestamp.
+ *
+ * @param timestamp - The timestamp in milliseconds
+ * @returns A UUID v7 string
+ */
+export function uuid7FromTime(timestamp: number | string): string {
+  const msecs =
+    typeof timestamp === "string" ? Date.parse(timestamp) : timestamp;
+  // Work around uuid@10 behavior where providing only { msecs }
+  // may not set the internal timestamp used for stringification.
+  // Providing a seq ensures the implementation updates its internal state
+  // and encodes the provided milliseconds into the UUID bytes.
+  return uuidv7({ msecs, seq: 0 });
+}
+
+/**
+ * Get the version of a UUID string.
+ * @param uuidStr - The UUID string to check
+ * @returns The version number (1-7) or null if invalid
+ */
+export function getUuidVersion(uuidStr: string): number | null {
+  if (!UUID_REGEX.test(uuidStr)) {
+    return null;
+  }
+
+  // Version is in bits 48-51
+  // Format: xxxxxxxx-xxxx-Vxxx-xxxx-xxxxxxxxxxxx
+  const versionChar = uuidStr[14];
+  return parseInt(versionChar, 16);
+}
+
+/**
+ * Warn if a UUID is not version 7.
+ *
+ * @param uuidStr - The UUID string to check
+ * @param idType - The type of ID (e.g., "run_id", "trace_id") for the warning message
+ */
+export function warnIfNotUuidV7(uuidStr: string, _idType: string): void {
+  const version = getUuidVersion(uuidStr);
+  if (version !== null && version !== 7 && !UUID7_WARNING_EMITTED) {
+    UUID7_WARNING_EMITTED = true;
+    warnOnce(
+      `LangSmith now uses UUID v7 for run and trace identifiers. ` +
+        `This warning appears when passing custom IDs. ` +
+        `Please use: import { uuidv7 } from 'langsmith'; const id = uuidv7(); ` +
+        `Future versions will require UUID v7.`,
+    );
+  }
+}
+
+/**
+ * Convert a UUID string to its 16-byte representation.
+ * @param uuidStr - The UUID string (with or without dashes)
+ * @returns A Uint8Array containing the 16 bytes of the UUID
+ */
+function uuidToBytes(uuidStr: string): Uint8Array {
+  const hex = uuidStr.replace(/-/g, "");
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+/**
+ * Convert 16 bytes to a UUID string.
+ * @param bytes - A Uint8Array containing 16 bytes
+ * @returns A UUID string in standard format
+ */
+function bytesToUuid(bytes: Uint8Array): string {
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(
+    12,
+    16,
+  )}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+// Reuse TextEncoder instance for performance
+const _textEncoder = new TextEncoder();
+
+/**
+ * Generates a 16-byte fingerprint for deterministic UUID generation using XXH3-128.
+ *
+ * XXH3 is an extremely fast, non-cryptographic hash function that provides excellent
+ * collision resistance. It's widely used in production systems and compatible with
+ * xxHash implementations in other languages.
+ *
+ * See: https://github.com/Cyan4973/xxHash
+ *
+ * @param str - The input string to hash
+ * @returns A Uint8Array containing 16 bytes of hash output
+ */
+function _fastHash128(str: string): Uint8Array {
+  const data = _textEncoder.encode(str);
+
+  // Compute XXH3-128 hash and convert to bytes
+  const hash128 = XXH3_128(data);
+  return xxh128ToBytes(hash128);
+}
+
+/**
+ * Generate a deterministic UUID v7 derived from an original UUID and a key.
+ *
+ * A pure function of `originalId` and `key`: it reads no ambient state, so the
+ * same pair always yields the same UUID, in any process, at any time. This is
+ * used for creating replica ids that are reproducible across distributed
+ * systems, including across SDK implementations.
+ *
+ * A UUID v7 original keeps its timestamp, so derived ids stay ordered by run
+ * start time. Any other original has none to keep, and the field is
+ * hash-derived: stable, but not chronological.
+ *
+ * @param originalId - The source UUID string (ideally UUID v7 to preserve timestamp)
+ * @param key - A string key used for deterministic derivation (e.g., project name)
+ * @returns A new UUID v7 string with preserved timestamp (if original is v7) and
+ *          deterministic random bits
+ *
+ * @example
+ * ```typescript
+ * const original = uuidv7();
+ * const replicaId = nonCryptographicUuid7Deterministic(original, "replica-project");
+ * // Same inputs always produce same output
+ * assert(nonCryptographicUuid7Deterministic(original, "replica-project") === replicaId);
+ * ```
+ */
+export function nonCryptographicUuid7Deterministic(
+  originalId: string,
+  key: string,
+): string {
+  // Generate deterministic bytes from hash of original + key
+  const hashInput = `${originalId}:${key}`;
+  const h = _fastHash128(hashInput);
+
+  // Build new UUID7:
+  // UUID7 structure (RFC 9562):
+  // [0-5]  48 bits: unix_ts_ms (timestamp in milliseconds)
+  // [6]    4 bits: version (0111 = 7) + 4 bits rand_a
+  // [7]    8 bits: rand_a (continued)
+  // [8]    2 bits: variant (10) + 6 bits rand_b
+  // [9-15] 56 bits: rand_b (continued)
+
+  const b = new Uint8Array(16);
+
+  const version = getUuidVersion(originalId);
+  if (version === 7) {
+    // Preserve timestamp from original UUID7 (bytes 0-5)
+    const originalBytes = uuidToBytes(originalId);
+    b.set(originalBytes.slice(0, 6), 0);
+  } else {
+    // No timestamp to preserve. Use the six hash bytes left unused below: a
+    // clock read here would make this impure, and the same id is derived
+    // from several runs, all of which must agree.
+    b.set(h.slice(10, 16), 0);
+  }
+
+  // Set version 7 (0111) in high nibble + 4 bits from hash
+  b[6] = 0x70 | (h[0] & 0x0f);
+
+  // rand_a continued (8 bits from hash)
+  b[7] = h[1];
+
+  // Set variant (10) in high 2 bits + 6 bits from hash
+  b[8] = 0x80 | (h[2] & 0x3f);
+
+  // rand_b (56 bits = 7 bytes from hash)
+  b.set(h.slice(3, 10), 9);
+
+  return bytesToUuid(b);
+}

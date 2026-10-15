@@ -1,0 +1,123 @@
+evaluations:
+  - time: 2026-07-14T09:30:00Z
+    agent_id: default_agent
+    version: 1
+    provider: deepseek
+    model_id: deepseek-v4-pro
+    thinking_level: medium
+    summary_title: Baseline before any optimization
+    summary: "Example data (not a real evaluation): baseline scores of the built-in
+      sample benchmark before any optimization. Hypothesis for the next round:
+      the agent skips a final self-check, losing points on completeness."
+    score: 60
+    cost: 0.013
+    duration_ms: 57500
+    cases:
+      - case: CASE-001-file-summary
+        score: 60
+        cost: 0.013
+        duration_ms: 45000
+        runs:
+          - score: 50
+            cost: 0.012
+            duration_ms: 42000
+            session_id: session-2026-07-14-09-05-11-1a2b3c01
+          - score: 70
+            cost: 0.014
+            duration_ms: 48000
+            session_id: session-2026-07-14-09-13-27-1a2b3c02
+      - case: CASE-002-data-cleanup
+        score: 60
+        cost: null
+        duration_ms: 70000
+        runs:
+          - score: 60
+            cost: null
+            duration_ms: 66000
+            session_id: session-2026-07-14-09-21-45-1a2b3c03
+          - score: 60
+            cost: null
+            duration_ms: 74000
+            session_id: session-2026-07-14-09-28-52-1a2b3c04
+  - time: 2026-07-15T09:30:00Z
+    agent_id: default_agent
+    version: 2
+    provider: deepseek
+    model_id: deepseek-v4-pro
+    thinking_level: medium
+    summary_title: Added an explicit planning step
+    summary: "Example data (not a real evaluation): after adding an explicit
+      planning step to the system prompt (hypothesis: written plans reduce
+      missed requirements), both cases improved. Next: tighten output
+      formatting."
+    score: 75
+    cost: 0.015
+    duration_ms: 53000
+    cases:
+      - case: CASE-001-file-summary
+        score: 75
+        cost: 0.012
+        duration_ms: 42000
+        runs:
+          - score: 70
+            cost: 0.011
+            duration_ms: 39000
+            session_id: session-2026-07-15-09-04-33-2b3c4d01
+          - score: 80
+            cost: 0.013
+            duration_ms: 45000
+            session_id: session-2026-07-15-09-12-08-2b3c4d02
+      - case: CASE-002-data-cleanup
+        score: 75
+        cost: 0.018
+        duration_ms: 64000
+        runs:
+          - score: 70
+            cost: 0.016
+            duration_ms: 60000
+            session_id: session-2026-07-15-09-19-40-2b3c4d03
+          - score: 80
+            cost: 0.02
+            duration_ms: 68000
+            session_id: session-2026-07-15-09-26-59-2b3c4d04
+  - time: 2026-07-16T09:30:00Z
+    agent_id: default_agent
+    version: 3
+    provider: deepseek
+    model_id: deepseek-v4-pro
+    thinking_level: medium
+    summary_title: Verify deliverables before finishing
+    summary: "Example data (not a real evaluation): after instructing the agent to
+      verify its deliverables against the statement before finishing
+      (hypothesis: a final check catches formatting slips), scores improved
+      again. Replace this benchmark with your own to track real progress."
+    score: 85
+    cost: 0.0135
+    duration_ms: 48000
+    cases:
+      - case: CASE-001-file-summary
+        score: 85
+        cost: 0.011
+        duration_ms: 38000
+        runs:
+          - score: 80
+            cost: 0.01
+            duration_ms: 36000
+            session_id: session-2026-07-16-09-03-21-3c4d5e01
+          - score: 90
+            cost: 0.012
+            duration_ms: 40000
+            session_id: session-2026-07-16-09-10-46-3c4d5e02
+      - case: CASE-002-data-cleanup
+        score: 85
+        cost: 0.016
+        duration_ms: 58000
+        runs:
+          - score: 90
+            cost: 0.015
+            duration_ms: 55000
+            session_id: session-2026-07-16-09-18-02-3c4d5e03
+          - score: 80
+            cost: 0.017
+            duration_ms: 61000
+            session_id: session-2026-07-16-09-25-30-3c4d5e04

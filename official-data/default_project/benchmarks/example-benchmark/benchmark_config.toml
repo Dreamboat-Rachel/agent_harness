@@ -1,0 +1,5 @@
+title = "Example Benchmark"
+description = "A built-in example benchmark so the evaluation charts have data out of the box. Replace it with your own."
+runs = 2
+status = "published"
+

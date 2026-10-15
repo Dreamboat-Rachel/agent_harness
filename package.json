@@ -1,0 +1,15 @@
+{
+  "name": "penguin-harness-replica",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "check": "node --check src/server.mjs && node --check src/store.mjs && node --check src/knowledge.mjs && node --check src/memory-engine.mjs && node --check src/embeddings.mjs && node --check src/web-search.mjs && node --check src/command-sandbox.mjs && node --check src/model-config.mjs && node --check src/openai-stream.mjs && node --check src/mcp.mjs && node --check src/runtime-utils.mjs && node --check public/markdown.js && node --check public/app.js",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs"
+  },
+  "dependencies": {
+    "@langchain/langgraph": "^1.5.0",
+    "marked": "^16.4.2"
+  }
+}

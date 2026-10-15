@@ -1,0 +1,42 @@
+import { BaseMessage, BaseMessageChunk, BaseMessageFields } from "./base.js";
+import { $InferMessageContent, MessageStructure, MessageToolSet } from "./message.js";
+//#region src/messages/system.d.ts
+export interface SystemMessageFields<TStructure extends MessageStructure = MessageStructure> extends BaseMessageFields<TStructure, "system"> {}
+/**
+ * Represents a system message in a conversation.
+ */
+export declare class SystemMessage<TStructure extends MessageStructure = MessageStructure> extends BaseMessage<TStructure, "system"> {
+  static lc_name(): string;
+  readonly type: "system";
+  constructor(fields: $InferMessageContent<TStructure, "system"> | SystemMessageFields<TStructure>);
+  /**
+   * Concatenates a string or another system message with the current system message.
+   * @param chunk - The chunk to concatenate with the system message.
+   * @returns A new system message with the concatenated content.
+   */
+  concat(chunk: string | SystemMessage): SystemMessage<TStructure>;
+  static isInstance(obj: unknown): obj is SystemMessage;
+  static [Symbol.hasInstance](obj: unknown): obj is SystemMessage<MessageStructure<MessageToolSet>>;
+}
+/**
+ * Represents a chunk of a system message, which can be concatenated with
+ * other system message chunks.
+ */
+export declare class SystemMessageChunk<TStructure extends MessageStructure = MessageStructure> extends BaseMessageChunk<TStructure, "system"> {
+  static lc_name(): string;
+  readonly type: "system";
+  constructor(fields: $InferMessageContent<TStructure, "system"> | SystemMessageFields<TStructure>);
+  concat(chunk: SystemMessageChunk<TStructure>): this;
+  static isInstance(obj: unknown): obj is SystemMessageChunk;
+  static [Symbol.hasInstance](obj: unknown): obj is SystemMessageChunk<MessageStructure<MessageToolSet>>;
+}
+/**
+ * @deprecated Use {@link SystemMessage.isInstance} instead
+ */
+export declare function isSystemMessage<TStructure extends MessageStructure>(x: BaseMessage): x is SystemMessage<TStructure>;
+/**
+ * @deprecated Use {@link SystemMessageChunk.isInstance} instead
+ */
+export declare function isSystemMessageChunk<TStructure extends MessageStructure>(x: BaseMessageChunk): x is SystemMessageChunk<TStructure>;
+//#endregion
+//# sourceMappingURL=system.d.ts.map

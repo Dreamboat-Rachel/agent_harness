@@ -1,0 +1,17 @@
+import { ErrorMessages } from "../errorMessages.js";
+import { JsonSchema7NumberType } from "./number.js";
+import "../Refs.js";
+import "../Options.js";
+import "zod/v3";
+//#region src/utils/zod-to-json-schema/parsers/date.d.ts
+export type JsonSchema7DateType = {
+  type: "integer" | "string";
+  format: "unix-time" | "date-time" | "date";
+  minimum?: number;
+  maximum?: number;
+  errorMessage?: ErrorMessages<JsonSchema7NumberType>;
+} | {
+  anyOf: JsonSchema7DateType[];
+};
+//#endregion
+//# sourceMappingURL=date.d.ts.map
