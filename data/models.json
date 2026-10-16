@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "defaultModelId": "d3c68e7f-c684-4ceb-b8b1-52a8fbe8f3d1",
+  "models": [
+    {
+      "id": "d3c68e7f-c684-4ceb-b8b1-52a8fbe8f3d1",
+      "name": "qwen3.8-flash",
+      "provider": "OpenAI-compatible",
+      "baseUrl": "https://maas.qianwenaiapi.com/compatible-mode/v1",
+      "model": "qwen3.8-flash",
+      "apiKey": "sk-8850b0b376d843eb89ec37fc5783b506",
+      "enabled": true,
+      "supportsTools": true,
+      "supportsVision": false,
+      "temperature": null,
+      "maxOutputTokens": null,
+      "systemPrompt": "",
+      "createdAt": "2026-10-16T06:17:43.371Z",
+      "updatedAt": "2026-10-16T06:17:43.371Z"
+    }
+  ]
+}
