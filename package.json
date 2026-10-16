@@ -1,6 +1,6 @@
 {
   "name": "penguin-harness-replica",
-  "version": "0.1.10",
+  "version": "0.1.9",
   "private": true,
   "author": "Agent Harness Contributors",
   "description": "Local AI agent harness with persistent memory, tools and an Electron desktop shell.",

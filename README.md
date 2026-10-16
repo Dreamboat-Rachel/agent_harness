@@ -51,16 +51,7 @@ Agent Harness 是一款面向个人工作流的 AI 智能体协作应用，支�
 
 - 桌面版配置和记忆保存在当前 Windows 用户的 `%APPDATA%\Agent Harness`，工作区位于 `%USERPROFILE%\AgentHarnessWorkspace`。重装或换电脑前，请备份应用数据目录与工作区。
 - 不要把 `.env`、模型配置文件、API Key 或真实用户数据提交到 Git，也不要把无登录保护的本地服务直接暴露到公网。
-- iPhone 可通过 Safari 将 Agent Harness 网页添加到主屏幕，以全屏 PWA 方式使用；它连接的是持续运行的远程 Agent 服务，不会在 iPhone 本机运行 Node、WSL 或命令沙箱。Windows 桌面版仍是独立的 Electron 应用。
-- iOS 使用前，服务必须通过 HTTPS 提供，并由私人 VPN/访问代理等方式保护。当前服务没有用户登录认证，不要直接将它开放到公网；部署时还需通过防火墙限制访问范围并保持服务主机在线。
-
-### iPhone 安装
-
-1. 在一台持续运行的电脑或服务器上启动 Agent Harness，并通过 HTTPS 地址安全地访问它。不要直接将未认证的 `HOST=0.0.0.0` 服务暴露到公网。
-2. 在 iPhone 上先连接到该服务允许的私人 VPN 或访问代理，再用 Safari 打开 HTTPS 地址。
-3. 点击 Safari 的“分享”按钮，选择“添加到主屏幕”，然后点击“添加”。之后从主屏幕图标启动即可全屏使用。
-
-任务、模型 API Key、记忆、工具和文件仍由后端主机处理；iPhone 需要网络连接，后端主机也必须保持运行。此方式提供 iOS 主屏幕应用体验，但不是可提交 App Store 的原生 `.ipa`；原生商店版本仍需要在 macOS/Xcode 环境中单独构建和签名。
+- 当前提供 Windows x64 桌面安装包和 Linux 桌面构建目标；尚未提供原生 iOS 应用。iPhone 不能安装 Windows `.exe`。
 
 ## 开发与部署
 
