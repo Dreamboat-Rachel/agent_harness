@@ -79,13 +79,15 @@ export function autoApproveTool(policy, name, permission) {
 export async function saveRuntimeConfig(filePath, input, current) {
   const policy = input.policy ?? current.policy;
   const memoryAutoLearn = input.memoryAutoLearn ?? current.memoryAutoLearn;
+  const sandboxNetwork = input.sandboxNetwork ?? current.sandboxNetwork ?? "none";
   if (!TOOL_POLICIES.includes(policy)) throw new Error("审批模式无效");
   if (typeof memoryAutoLearn !== "boolean") throw new Error("自动学习开关必须是布尔值");
+  if (!["none", "allow"].includes(sandboxNetwork)) throw new Error("命令联网设置无效");
   const content = await readFileOrEmpty(filePath);
-  const lines = content.split(/\r?\n/).filter((line) => !/^\s*(?:export\s+)?(?:TOOL_POLICY|MEMORY_AUTO_LEARN)\s*=/.test(line));
-  lines.push(`TOOL_POLICY=${quoteEnv(policy)}`, `MEMORY_AUTO_LEARN=${quoteEnv(memoryAutoLearn)}`);
+  const lines = content.split(/\r?\n/).filter((line) => !/^\s*(?:export\s+)?(?:TOOL_POLICY|MEMORY_AUTO_LEARN|SANDBOX_NETWORK)\s*=/.test(line));
+  lines.push(`TOOL_POLICY=${quoteEnv(policy)}`, `MEMORY_AUTO_LEARN=${quoteEnv(memoryAutoLearn)}`, `SANDBOX_NETWORK=${quoteEnv(sandboxNetwork)}`);
   await fs.writeFile(filePath, `${lines.join("\n").trim()}\n`, { encoding: "utf8", mode: 0o600 });
-  return { policy, memoryAutoLearn };
+  return { policy, memoryAutoLearn, sandboxNetwork };
 }
 
 function parseEnv(content) {

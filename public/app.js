@@ -2,7 +2,7 @@ import { renderMarkdown } from "./markdown.js";
 import { icon, starters, panelNames, statusLabel, orbit } from "./workbench-ui.js";
 
 const state = {
-  sessions: [], current: null, stream: null, capabilities: null, view: "home", page: null, submitting: false, mcpEditing: null, mcpBusy: false, skillBusy: false, toolTab: "mcp", modelEditing: null, modelSettingsTab: "models",
+  sessions: [], current: null, stream: null, capabilities: null, view: "home", page: null, submitting: false, focusUserMessage: null, mcpEditing: null, mcpBusy: false, skillBusy: false, toolTab: "mcp", modelEditing: null, modelSettingsTab: "models",
   expandedToolResults: new Set(), toolResultHeights: new Map(),
   knowledge: { memory: "", skills: [], stats: {} }, memorySearch: { facts: [], graph: { entities: [], relations: [] } },
   graph: { entities: [], relations: [] }, schedules: [], mcp: [], skills: { installed: [], catalog: [] },
@@ -205,10 +205,11 @@ function renderHome() {
 
 function renderMessages() {
   const container = $("messages");
-  const followOutput = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
   const messages = state.current?.messages || [];
   const home = state.view === "home" || (!messages.length && !state.submitting);
   document.querySelector(".conversation").classList.toggle("is-home", home);
+  if (state.page) return;
+  const followOutput = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
   if (home) { renderHome(); return; }
   container.innerHTML = messages.map((message, index) => {
     if (message.role === "tool") {
@@ -224,7 +225,19 @@ function renderMessages() {
     const attachments = message.role === "user" && message.attachments?.length ? `<div class="message-attachments">${message.attachments.map((name) => `<span>${icon("document")}${escapeHtml(name)}</span>`).join("")}</div>` : "";
     return `<article class="message ${escapeHtml(message.role)}"><div class="avatar">${message.role === "user" ? "你" : message.role === "system" ? "!" : icon("spark")}</div><div class="message-body">${meta}<div class="message-content ${message.role === "assistant" ? "markdown-content" : "plain-content"}">${message.role === "assistant" ? renderMarkdown(message.content) : escapeHtml(message.content)}</div>${attachments}</div></article>`;
   }).join("") || '<div class="task-starting">正在开启你的任务…</div>';
-  if (followOutput) container.scrollTop = container.scrollHeight;
+  let focusedLatestUserMessage = false;
+  if (state.focusUserMessage?.sessionId === state.current?.id) {
+    const userMessages = container.querySelectorAll(".message.user");
+    const latestUserMessage = userMessages[userMessages.length - 1];
+    if (latestUserMessage && userMessages.length > state.focusUserMessage.afterCount) {
+      const topPadding = Number.parseFloat(getComputedStyle(container).paddingTop) || 0;
+      const messageOffset = latestUserMessage.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      container.scrollTo({ top: container.scrollTop + messageOffset - topPadding, behavior: "smooth" });
+      state.focusUserMessage = null;
+      focusedLatestUserMessage = true;
+    }
+  }
+  if (followOutput && !focusedLatestUserMessage) container.scrollTop = container.scrollHeight;
   renderTaskProgress();
 }
 
@@ -484,6 +497,7 @@ async function loadControlData() {
   Object.assign(state, { capabilities, knowledge, memorySearch, graph, schedules, mcp, skills, modelConfig, models });
   const runtime = await api("/config/runtime");
   $("memory-auto-learn").checked = runtime.memoryAutoLearn;
+  $("command-network").checked = runtime.sandboxNetwork === "allow";
   renderModels(); renderRuntime(); renderKnowledge(); renderGraph(); renderSchedules(); renderMcp(); renderSkills(); renderModelConfig();
 }
 
@@ -750,9 +764,11 @@ async function saveRuntimeSetting(input) {
     const saved = await api("/config/runtime", { method: "PUT", body: JSON.stringify(input) });
     state.capabilities.policy = saved.policy;
     state.modelConfig.policy = saved.policy;
+    state.capabilities.sandbox.network = saved.sandboxNetwork;
     $("tool-policy").value = saved.policy;
     syncSmoothSelect($("tool-policy"));
     $("memory-auto-learn").checked = saved.memoryAutoLearn;
+    $("command-network").checked = saved.sandboxNetwork === "allow";
     renderRuntime();
     notify("设置已保存并立即生效");
   } catch (error) {
@@ -760,11 +776,13 @@ async function saveRuntimeSetting(input) {
     $("approval-mode").value = runtime.policy;
     syncSmoothSelect($("approval-mode"));
     $("memory-auto-learn").checked = runtime.memoryAutoLearn;
+    $("command-network").checked = runtime.sandboxNetwork === "allow";
     notify(error.message, "error");
   }
 }
 $("approval-mode").addEventListener("change", () => { void saveRuntimeSetting({ policy: $("approval-mode").value }); });
 $("memory-auto-learn").addEventListener("change", () => { void saveRuntimeSetting({ memoryAutoLearn: $("memory-auto-learn").checked }); });
+$("command-network").addEventListener("change", () => { void saveRuntimeSetting({ sandboxNetwork: $("command-network").checked ? "allow" : "none" }); });
 
 $("composer").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -775,12 +793,13 @@ $("composer").addEventListener("submit", async (event) => {
   updateComposer();
   try {
     const targetSession = !state.current || state.view === "home" ? await createSession() : state.current;
+    state.focusUserMessage = { sessionId: targetSession.id, afterCount: targetSession.messages.filter((message) => message.role === "user").length };
     await api(`/sessions/${targetSession.id}/tasks`, { method: "POST", body: JSON.stringify({ text: value, sources: state.pendingSources, modelId: state.selectedModelId || undefined }) });
     input.value = "";
     state.pendingSources = [];
     renderPendingSources();
     await refreshSession(targetSession.id);
-  } catch (error) { input.value = value; notify(error.message, "error"); }
+  } catch (error) { state.focusUserMessage = null; input.value = value; notify(error.message, "error"); }
   finally { state.submitting = false; renderCurrent(); }
 });
 

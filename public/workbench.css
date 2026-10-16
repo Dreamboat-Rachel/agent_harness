@@ -52,11 +52,6 @@ kbd { font-family: inherit; font-size: 10px; font-weight: 400; }
 .session-row:hover .session-delete, .session-row:focus-within .session-delete { opacity: 1; }
 .history-empty { color: #a1b0a5; font-size: 10px; text-align: left; padding: 9px 11px; }
 .sidebar-bottom { margin-top: auto; padding-top: 12px; }
-.local-card { display: flex; align-items: center; gap: 8px; margin: 14px 4px 19px; padding: 12px 8px; border: 1px solid #3c5142; border-radius: 8px; background: #293e31; }
-.local-icon { color: #aacbac; }.local-icon .ui-icon { width: 19px; height: 19px; }
-.local-card strong { display: block; font-weight: 500; color: #d3e5d6; font-size: 10px; }
-.local-card small { display: block; font-size: 9px; margin-top: 5px; color: #9fb4a4; }
-.local-card .online-dot { margin-left: auto; width: 5px; height: 5px; }
 .sidebar-foot { display: flex; gap: 9px; align-items: center; border-top: 1px solid #3b4d40; padding: 16px 5px 19px; margin: 0; }
 .profile-avatar { width: 29px; height: 29px; display: grid; place-items: center; background: #e2dfc8; border-radius: 50%; font-size: 10px; color: #5a6354; }
 .sidebar-foot strong { display: block; color: #c2d1c6; font-size: 10px; font-weight: 500; }
@@ -319,7 +314,7 @@ input::placeholder, textarea::placeholder { color: #a5b295; }
   .hero-copy { padding-left: 25px; }.hero h1 { font-size: 33px; }.hero p { font-size: 10px; }.hero { min-height: 260px; }
   .starter-card { padding: 15px 12px; }.starter-card strong { font-size: 10px; }.starter-card small { font-size: 8px; }
 }
-@media (max-width: 850px) { .app-shell, .app-shell.inspector-open { grid-template-columns: 190px minmax(0, 1fr); }.sidebar { padding: 21px 11px 0; }.brand { gap: 8px; }.brand strong { font-size: 12px; }.brand small { font-size: 8px; letter-spacing: .3px; }.brand-mark { width: 28px; height: 32px; }.sidebar-search { font-size: 10px; }.sidebar-search kbd { display: none; }.local-card { padding: 10px 7px; }.local-card small { font-size: 8px; }.local-card .online-dot { display: none; }.dashboard-lower { grid-template-columns: 1fr; gap: 0; }.workspace-summary { margin-top: 20px; padding: 18px; border: 1px solid #e1e8d6; border-radius: 10px; }.workspace-summary > p { margin-bottom: 16px; }.hero-visual { position: absolute; width: 45%; right: -10px; top: 20%; opacity: .8; }.hero { display: block; }.hero-copy { padding-left: 23px; }.hero p { max-width: 70%; }.hero p br { display: none; }.hero-copy .hero-link { font-size: 9px; }.section-heading > span { display: none; }.starter-grid { gap: 8px; }.starter-card strong { line-height: 1.8; }.starter-card small { line-height: 1.8; }.starter-arrow { display: none; }.breadcrumb { display: none; }.model-chip { max-width: 180px; }.task-progress { margin-inline: 27px; } }
+@media (max-width: 850px) { .app-shell, .app-shell.inspector-open { grid-template-columns: 190px minmax(0, 1fr); }.sidebar { padding: 21px 11px 0; }.brand { gap: 8px; }.brand strong { font-size: 12px; }.brand small { font-size: 8px; letter-spacing: .3px; }.brand-mark { width: 28px; height: 32px; }.sidebar-search { font-size: 10px; }.sidebar-search kbd { display: none; }.dashboard-lower { grid-template-columns: 1fr; gap: 0; }.workspace-summary { margin-top: 20px; padding: 18px; border: 1px solid #e1e8d6; border-radius: 10px; }.workspace-summary > p { margin-bottom: 16px; }.hero-visual { position: absolute; width: 45%; right: -10px; top: 20%; opacity: .8; }.hero { display: block; }.hero-copy { padding-left: 23px; }.hero p { max-width: 70%; }.hero p br { display: none; }.hero-copy .hero-link { font-size: 9px; }.section-heading > span { display: none; }.starter-grid { gap: 8px; }.starter-card strong { line-height: 1.8; }.starter-card small { line-height: 1.8; }.starter-arrow { display: none; }.breadcrumb { display: none; }.model-chip { max-width: 180px; }.task-progress { margin-inline: 27px; } }
 @media (max-width: 700px) {
   .app-shell, .app-shell.inspector-open { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
   .sidebar { display: grid; grid-template-columns: 1fr auto; padding: 12px 15px 9px; gap: 0; border: 0; height: auto; }

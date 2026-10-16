@@ -42,7 +42,8 @@ Agent Harness 是一款面向个人工作流的 AI 智能体协作应用，支�
 
 ### 模型能力与常见问题
 
-- “模型与设置”中的“能力设置”可以配置向量检索、联网搜索、地图能力和审批模式。向量服务是可选项；未配置时仍可使用基础记忆检索。
+- “模型与设置”中的“能力设置”可以配置向量检索、联网搜索、地图能力、命令联网和审批模式。向量服务是可选项；未配置时仍可使用基础记忆检索。
+- Agent 需要用 `curl`、`wget`、`pip` 或 `npm` 下载文件/依赖时，在“能力设置”开启“允许命令联网下载”。默认关闭；开启后，获准的 WSL 命令使用 WSL 自身网络，WSL 本身仍需能访问互联网。下载到 `/workspace` 的文件会保存在 Agent 工作区。
 - 回复自称的模型身份不一定可靠。会话消息下方显示应用请求的模型 ID 和接口返回的模型标识，可用它们核对请求信息；这不等同于独立验证服务商的底层部署。
 - 如果模型无法连接，先检查 API 地址、模型 ID、API Key 和网络；如果工具列表为空，检查对应 MCP 服务状态及其服务端配置。
 
@@ -214,7 +215,7 @@ Invoke-RestMethod http://127.0.0.1:4371/api/capabilities
 | `AMAP_MAPS_API_KEY` | 空 | 高德地图 Web 服务 Key，用于内置 `amap-maps` MCP |
 | `BOCHA_API_KEY` | 空 | 博查 Web Search API Key，用于内置 `web_search` 联网查询工具 |
 | `SANDBOX_WSL_DISTRO` | `Ubuntu` | 运行 bubblewrap 的 WSL2 发行版 |
-| `SANDBOX_NETWORK` | `none` | `none` 隔离网络；显式设为 `allow` 才允许联网 |
+| `SANDBOX_NETWORK` | `none` | 命令沙箱网络；可在“模型与设置 → 能力设置”切换，或显式设为 `allow` |
 | `CONTEXT_CHAR_LIMIT` | `60000` | 触发上下文压缩的近似字符数 |
 | `MAX_TURNS` | `20` | 单次任务的最大模型/工具循环数 |
 | `MEMORY_AUTO_LEARN` | `true` | 成功回复后自动提取稳定事实；设为 `false` 可关闭 |
@@ -255,7 +256,7 @@ EMBEDDING_DIMENSIONS=1024
 
 ## 命令沙箱
 
-`run_command` 不再直接启动宿主 PowerShell。在当前 Windows 部署中，它通过 WSL2 Ubuntu 进入 `bubblewrap`：仅把 `data/workspace` 读写挂载为 `/workspace`，Linux 运行时只读挂载，进程/PID/IPC/UTS 与网络命名空间隔离，HOME 和临时目录使用沙箱内存目录。宿主项目目录、`.env`、用户主目录和凭据目录不会进入挂载视图。沙箱探测失败时命令会 fail-closed，拒绝回退到宿主执行。
+`run_command` 不再直接启动宿主 PowerShell。在当前 Windows 部署中，它通过 WSL2 Ubuntu 进入 `bubblewrap`：仅把 `data/workspace` 读写挂载为 `/workspace`，Linux 运行时只读挂载，进程/PID/IPC/UTS 隔离，HOME 和临时目录使用沙箱内存目录。宿主项目目录、`.env`、用户主目录和凭据目录不会进入挂载视图。命令网络默认关闭；在“模型与设置 → 能力设置”启用后，沙箱使用 WSL 的网络，可供获准命令下载文件或依赖，但前提是 WSL 本身能够联网。沙箱探测失败时命令会 fail-closed，拒绝回退到宿主执行。
 
 命令环境是 Linux Bash，Python 命令使用 `python3`。文件工具另外会解析真实路径并阻止通过符号链接或目录联接越出工作区。MCP 服务是独立执行边界：本地命令沙箱不会自动约束远端 MCP 服务，必须按服务自身部署权限进行隔离。
 

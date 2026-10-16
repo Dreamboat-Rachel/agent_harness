@@ -32,6 +32,7 @@ let POLICY = process.env.TOOL_POLICY || "always-ask";
 const CONTEXT_LIMIT = Number(process.env.CONTEXT_CHAR_LIMIT || 60000);
 const MAX_TURNS = Number(process.env.MAX_TURNS || 20);
 let MEMORY_AUTO_LEARN = process.env.MEMORY_AUTO_LEARN !== "false";
+let SANDBOX_NETWORK = process.env.SANDBOX_NETWORK === "allow" ? "allow" : "none";
 
 await fs.mkdir(TRACE_ROOT, { recursive: true });
 await fs.mkdir(WORKSPACE_ROOT, { recursive: true });
@@ -45,7 +46,7 @@ await mcp.init();
 const commandSandbox = new CommandSandbox({
   workspaceRoot: WORKSPACE_ROOT,
   skillsRoot: knowledge.skillsDir,
-  network: process.env.SANDBOX_NETWORK || "none"
+  network: SANDBOX_NETWORK
 });
 await commandSandbox.init();
 
@@ -575,12 +576,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "PUT" && url.pathname === "/api/config/runtime") {
       const origin = req.headers.origin;
       if (origin && origin !== `http://${req.headers.host}` && origin !== `https://${req.headers.host}`) return json(res, 403, { error: "跨站配置请求已拒绝" });
-      const settings = await saveRuntimeConfig(ENV_FILE, await readBody(req), { policy: POLICY, memoryAutoLearn: MEMORY_AUTO_LEARN });
+      const settings = await saveRuntimeConfig(ENV_FILE, await readBody(req), { policy: POLICY, memoryAutoLearn: MEMORY_AUTO_LEARN, sandboxNetwork: SANDBOX_NETWORK });
       MEMORY_AUTO_LEARN = settings.memoryAutoLearn;
+      SANDBOX_NETWORK = settings.sandboxNetwork;
+      commandSandbox.network = SANDBOX_NETWORK;
       applyPolicy(settings.policy);
       return json(res, 200, settings);
     }
-    if (req.method === "GET" && url.pathname === "/api/config/runtime") return json(res, 200, { policy: POLICY, memoryAutoLearn: MEMORY_AUTO_LEARN });
+    if (req.method === "GET" && url.pathname === "/api/config/runtime") return json(res, 200, { policy: POLICY, memoryAutoLearn: MEMORY_AUTO_LEARN, sandboxNetwork: SANDBOX_NETWORK });
     if (req.method === "GET" && url.pathname === "/api/capabilities") return json(res, 200, { modelConfigured: model.configured, policy: POLICY, workspace: WORKSPACE_ROOT, persistence: "sqlite+jsonl", memory: memoryEngine.status(), sandbox: commandSandbox.status(), webSearch: webSearch.status(), features: ["context-compaction", "langgraph-memory", "vector-memory", "knowledge-graph", "bubblewrap-sandbox", "skills", "subagents", "scheduler", "mcp-http", "amap-maps-mcp", "bocha-web-search"] });
     if (req.method === "GET" && url.pathname === "/api/models") return json(res, 200, models.list());
     if (parts[1] === "models" && ["POST", "PUT", "DELETE"].includes(req.method)) {

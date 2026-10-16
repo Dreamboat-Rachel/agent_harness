@@ -1,5 +1,6 @@
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 
 export class CommandSandbox {
   constructor({ workspaceRoot, skillsRoot = "", network = "none", distro = process.env.SANDBOX_WSL_DISTRO || "Ubuntu" } = {}) {
@@ -76,10 +77,16 @@ export class CommandSandbox {
     return await new Promise((resolve, reject) => {
       const child = spawn(invocation.executable, invocation.argv, { cwd: this.workspaceRoot, signal, windowsHide: true });
       let output = "";
+      const stdoutDecoder = new StringDecoder("utf8");
+      const stderrDecoder = new StringDecoder("utf8");
       const append = (chunk) => { output += chunk; if (output.length > 1024 * 1024) output = output.slice(-1024 * 1024); };
-      child.stdout.on("data", append); child.stderr.on("data", append);
+      child.stdout.on("data", (chunk) => append(stdoutDecoder.write(chunk)));
+      child.stderr.on("data", (chunk) => append(stderrDecoder.write(chunk)));
       child.on("error", reject);
-      child.on("close", (code) => resolve(`${output}\n[exit ${code}]`.trim()));
+      child.on("close", (code) => {
+        append(stdoutDecoder.end()); append(stderrDecoder.end());
+        resolve(`${output}\n[exit ${code}]`.trim());
+      });
     });
   }
 }

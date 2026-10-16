@@ -25,7 +25,6 @@
         <div id="sessions" class="sessions" aria-label="会话列表"></div>
         <div class="sidebar-bottom">
           <button class="nav-item" data-open-panel="config" type="button"><span data-icon="settings"></span>模型与设置</button>
-          <div class="local-card"><span class="local-icon" data-icon="shield"></span><div><strong>本地优先，安心工作</strong><small>任务与记忆保存在这台电脑</small></div><span class="online-dot"></span></div>
           <div class="sidebar-foot"><span class="profile-avatar">我</span><div><strong>我的工作空间</strong><small>Personal workspace</small></div><span class="workspace-label">LOCAL</span></div>
         </div>
       </aside>
@@ -197,8 +196,10 @@
             <label id="clear-bocha-key-row" class="check-row hidden"><input id="clear-bocha-key" type="checkbox" />清除已保存的博查搜索 Key</label>
             <p class="hint policy-hint">保存后模型可使用博查联网搜索，查询实时新闻、赛程和最新网页信息。</p>
             </div></details>
+            <label class="check-row"><input id="command-network" type="checkbox" />允许命令联网下载</label>
+            <p class="hint policy-hint">开启后，获准执行的 WSL 命令可访问外网，适用于下载文件、安装依赖等操作；默认关闭。</p>
             <label>审批模式<select id="tool-policy"><option value="always-ask">请求批准审批</option><option value="assistant-approve">帮我批准审批</option><option value="allow-all">直接审批通过</option><option value="workspace-write" hidden>旧模式：工作区自动允许</option><option value="read-only" hidden>旧模式：只读</option><option value="deny-all" hidden>旧模式：全部拒绝</option></select></label>
-            <p class="hint policy-hint">命令获批后仍在 WSL2 + bubblewrap 中执行：工作区映射到 /workspace，使用 Bash 和 python3；其他宿主目录未挂载，默认禁止联网。MCP 工具在各自服务端执行。</p>
+            <p class="hint policy-hint">命令仍在 WSL2 + bubblewrap 中执行：工作区映射到 /workspace，使用 Bash 和 python3；其他宿主目录未挂载。MCP 工具在各自服务端执行。</p>
             <div id="model-config-status" class="config-status" role="status"></div>
             <button class="primary-button" type="submit">保存能力设置</button>
           </form>
