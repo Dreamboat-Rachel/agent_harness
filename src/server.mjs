@@ -557,7 +557,7 @@ function serveStatic(res, pathname) {
   const relative = pathname === "/" ? "index.html" : pathname.slice(1);
   const file = path.resolve(PUBLIC_ROOT, relative);
   if (file !== PUBLIC_ROOT && !file.startsWith(`${PUBLIC_ROOT}${path.sep}`)) return json(res, 404, { error: "not found" });
-  const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8" };
+  const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".png": "image/png", ".webmanifest": "application/manifest+json; charset=utf-8" };
   fs.readFile(file).then((body) => { res.writeHead(200, { "content-type": types[path.extname(file)] || "application/octet-stream" }); res.end(body); }).catch(() => json(res, 404, { error: "not found" }));
 }
 

@@ -320,8 +320,12 @@ input::placeholder, textarea::placeholder { color: #a5b295; }
   .sidebar { display: grid; grid-template-columns: 1fr auto; padding: 12px 15px 9px; gap: 0; border: 0; height: auto; }
   .brand { padding: 0; }.brand strong { font-size: 14px; }.brand small { display: none; }.brand-mark { width: 28px; height: 30px; }
   #new-session { min-height: 33px; padding: 7px 10px; font-size: 11px; }#new-session kbd { display: none; }
-  .sidebar-search, .nav-label, .sessions, .sidebar-bottom { display: none; }
-  .workspace-nav { display: flex; grid-column: 1 / -1; justify-content: space-between; gap: 5px; margin-top: 10px; }
+  .sidebar-search, .nav-label, .sessions { display: none; }
+  .sidebar-bottom { display: block; grid-column: 1 / -1; margin-top: 5px; }
+  .sidebar-bottom > .nav-item { width: 100%; min-height: 31px; justify-content: center; }
+  .sidebar-foot { display: none; }
+  .workspace-nav { display: flex; grid-column: 1 / -1; justify-content: space-between; gap: 5px; margin-top: 10px; overflow-x: auto; scrollbar-width: none; }
+  .workspace-nav::-webkit-scrollbar { display: none; }
   .nav-item { min-height: 31px; font-size: 9px; gap: 5px; padding: 7px; width: auto; }.nav-item .ui-icon { width: 13px; height: 13px; }.nav-count, .nav-current { display: none !important; }
   .conversation { grid-template-rows: 51px minmax(0, 1fr) auto auto; }.topbar { padding: 0 17px; font-size: 11px; }.topbar-actions { gap: 7px; }.model-chip { max-width: 150px; padding: 6px 8px; font-size: 9px; }
   .messages, .is-home .messages { padding: 19px 17px 12px; }.dashboard-greeting { font-size: 10px; margin-bottom: 14px; }.dashboard-greeting time { font-size: 8px; }
@@ -331,6 +335,8 @@ input::placeholder, textarea::placeholder { color: #a5b295; }
   .composer, .is-home .composer { padding: 9px 17px 12px; }.composer-field { padding: 12px 12px 9px; border-radius: 10px; }.composer textarea { font-size: 12px; }.composer-context { flex: 1 1 auto; }.composer-model-trigger { max-width: 132px; }.composer-caption { font-size: 7px; }.composer-caption > span:first-child { display: none; }.composer-caption > span:last-child { margin-left: auto; }
   .task-progress { margin: 0 17px; gap: 7px; flex-wrap: wrap; }.progress-detail { display: none; }.progress-action { margin-left: auto; }.progress-connector { width: 15px; }.message { gap: 9px; }.avatar { flex-basis: 26px; height: 26px; }
   .command-footer > span:first-child { display: none; }.inspector-head { height: 65px; }
+  .sidebar { padding-top: calc(12px + env(safe-area-inset-top)); }
+  .composer, .is-home .composer { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
 }
 @media (max-height: 760px) and (min-width: 851px) { .sidebar { padding-top: 20px; }.brand { padding-bottom: 22px; }.sidebar-search { margin-bottom: 17px; }.history-heading { margin-top: 20px; }.hero { min-height: 235px; }.hero-copy { padding-top: 22px; padding-bottom: 22px; }.hero h1 { font-size: 35px; margin: 14px 0 10px; }.hero-link { margin-top: 14px; }.is-home .messages { padding-top: 20px; }.dashboard-greeting { margin-bottom: 14px; }.starter-card { padding-block: 13px; }.starter-icon { margin-bottom: 10px; }.section-heading { margin-top: 20px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
