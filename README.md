@@ -1,6 +1,6 @@
 # Agent Harness
 
-这是一个可独立运行的 PenguinHarness 兼容复刻，用于理解和复现 Agent Harness 的核心运行链路。它不是把官方品牌或源码重新打包成另一个产品。
+这是一个可独立运行的 智能体协作项目，用于理解和复现 Agent Harness 的核心运行链路。
 
 仓库内同时保留了两套项目：
 
