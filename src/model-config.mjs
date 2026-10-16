@@ -13,19 +13,21 @@ export async function loadEnvFile(filePath, target = process.env) {
   return values;
 }
 
-export async function saveModelConfig(filePath, input, current = {}) {
-  const baseUrl = String(input.baseUrl ?? "").trim().replace(/\/$/, "");
-  const model = String(input.model ?? "").trim();
+export async function saveModelConfig(filePath, input, current = {}, { requireModel = true } = {}) {
+  const baseUrl = String(input.baseUrl ?? current.baseUrl ?? "").trim().replace(/\/$/, "");
+  const model = String(input.model ?? current.model ?? "").trim();
   const embeddingBaseUrl = String(input.embeddingBaseUrl ?? current.embeddingBaseUrl ?? "").trim().replace(/\/$/, "");
   const embeddingModel = String(input.embeddingModel ?? current.embeddingModel ?? "").trim();
   const embeddingDimensions = normalizeDimensions(input.embeddingDimensions ?? current.embeddingDimensions ?? "");
   const embeddingFormat = String(input.embeddingFormat ?? current.embeddingFormat ?? "auto").trim().toLocaleLowerCase();
   const policy = String(input.policy ?? current.policy ?? "always-ask").trim();
-  if (!baseUrl || !model) throw new Error("接口地址和模型名称不能为空");
-  let parsed;
-  try { parsed = new URL(baseUrl); }
-  catch { throw new Error("接口地址必须是有效的 HTTP 或 HTTPS URL"); }
-  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("接口地址必须使用 HTTP 或 HTTPS");
+  if (requireModel && (!baseUrl || !model)) throw new Error("接口地址和模型名称不能为空");
+  if (baseUrl) {
+    let parsed;
+    try { parsed = new URL(baseUrl); }
+    catch { throw new Error("接口地址必须是有效的 HTTP 或 HTTPS URL"); }
+    if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("接口地址必须使用 HTTP 或 HTTPS");
+  }
   if (embeddingBaseUrl) {
     let embeddingUrl;
     try { embeddingUrl = new URL(embeddingBaseUrl); }

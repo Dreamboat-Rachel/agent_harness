@@ -5,43 +5,66 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Agent Harness</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/workbench.css" />
   </head>
   <body>
     <main class="app-shell">
       <aside class="sidebar">
-        <div class="brand"><span class="brand-mark">A</span><strong>Agent Harness</strong></div>
-        <button id="new-session" class="primary-button" type="button">＋ 新建会话</button>
+        <div class="brand"><span class="brand-mark" data-icon="spark"></span><div><strong>Agent Harness</strong><small>你的想法，协同实现。</small></div></div>
+        <button id="new-session" class="primary-button" type="button"><span data-icon="plus"></span>新建任务<kbd>Ctrl N</kbd></button>
+        <button id="open-search" class="sidebar-search" type="button"><span data-icon="search"></span>搜索任务与功能<kbd>Ctrl K</kbd></button>
+        <div class="nav-label">工作空间</div>
+        <nav class="workspace-nav" aria-label="主导航">
+          <button id="nav-home" class="nav-item active" type="button"><span data-icon="grid"></span>工作台<span class="nav-current"></span></button>
+          <button class="nav-item" data-open-panel="memory" type="button"><span data-icon="memory"></span>记忆空间</button>
+          <button class="nav-item" data-open-panel="schedules" type="button"><span data-icon="clock"></span>自动化<span id="schedule-count" class="nav-count">0</span></button>
+          <button class="nav-item" data-open-panel="graph" type="button"><span data-icon="graph"></span>知识图谱</button>
+          <button class="nav-item" data-open-panel="mcp" type="button"><span data-icon="tools"></span>工具连接</button>
+        </nav>
+        <div class="nav-label history-heading"><span>最近任务</span><span id="session-count">0</span></div>
         <div id="sessions" class="sessions" aria-label="会话列表"></div>
-        <div class="sidebar-foot"><span class="online-dot"></span>本地 Agent Runtime</div>
+        <div class="sidebar-bottom">
+          <button class="nav-item" data-open-panel="config" type="button"><span data-icon="settings"></span>模型与设置</button>
+          <div class="local-card"><span class="local-icon" data-icon="shield"></span><div><strong>本地优先，安心工作</strong><small>任务与记忆保存在这台电脑</small></div><span class="online-dot"></span></div>
+          <div class="sidebar-foot"><span class="profile-avatar">我</span><div><strong>我的工作空间</strong><small>Personal workspace</small></div><span class="workspace-label">LOCAL</span></div>
+        </div>
       </aside>
 
       <section class="conversation">
         <header class="topbar">
-          <div class="session-heading"><span id="session-title">New Session</span><span id="status" class="status idle">idle</span></div>
+          <div class="session-heading"><span class="breadcrumb">工作空间<span>/</span></span><span id="session-title">工作台</span><span id="status" class="status idle">就绪</span></div>
           <div class="topbar-actions">
-            <button id="toggle-inspector" class="icon-button inspector-toggle" type="button" title="打开控制台" aria-label="打开控制台">☷</button>
-            <button id="stop" class="icon-button" type="button" title="停止任务" aria-label="停止任务">■</button>
+            <button id="toggle-inspector" class="icon-button inspector-toggle" type="button" title="打开任务详情" aria-label="打开任务详情" aria-expanded="false" aria-controls="inspector"><span data-icon="panel"></span></button>
+            <button id="stop" class="icon-button" type="button" title="停止任务" aria-label="停止任务"><span data-icon="stop"></span></button>
           </div>
         </header>
-        <div id="messages" class="messages"><div class="empty">创建会话后发送一条消息开始运行。</div></div>
+        <div id="messages" class="messages" aria-label="任务工作区"></div>
+        <section id="workspace-page" class="workspace-page hidden" aria-labelledby="workspace-page-title">
+          <header class="workspace-page-heading"><span id="workspace-page-icon" class="workspace-page-icon"></span><div><small>工作空间 / 配置中心</small><h1 id="workspace-page-title" tabindex="-1"></h1><p id="workspace-page-description"></p></div></header>
+          <div id="workspace-panels" class="workspace-panels"></div>
+        </section>
+        <div id="task-progress" class="task-progress hidden" aria-live="polite"></div>
         <form id="composer" class="composer">
+          <label class="sr-only" for="input">描述你的任务</label>
           <div class="composer-field">
-            <textarea id="input" rows="1" placeholder="输入任务，例如：读取 notes.txt 并总结"></textarea>
-            <button type="submit" class="send-button" title="发送" aria-label="发送" disabled><span aria-hidden="true">↑</span></button>
+            <textarea id="input" rows="1" placeholder="说说你想完成的事，剩下的交给我…"></textarea>
+            <div id="pending-sources" class="source-list hidden" aria-label="本次任务资料"></div>
+            <div class="composer-tools"><div class="composer-context">
+              <input id="source-files" class="source-file-input" type="file" multiple accept=".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xml,.html,.htm,.log,.js,.mjs,.cjs,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.h,.cs,.go,.rs,.sh,.sql,.css,.ini,.toml" />
+              <button id="add-source" class="composer-icon-button" type="button" title="添加资料文件" aria-label="添加资料文件"><span data-icon="plus"></span></button>
+              <div class="composer-model-wrap"><select id="composer-model" hidden aria-hidden="true" tabindex="-1"><option value="">体验模式</option></select><button id="composer-model-trigger" class="composer-model-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="选择模型"><span id="composer-model-value">体验模式</span></button><div id="composer-model-menu" class="composer-model-menu" role="listbox" aria-label="选择模型"></div></div>
+              <span class="composer-divider"></span><span class="composer-agent"><span data-icon="spark"></span>Agent 协作</span><span class="composer-divider"></span><button data-open-panel="runtime" type="button" id="composer-policy">操作前确认</button>
+            </div><button type="submit" class="send-button" title="开始任务" aria-label="开始任务" disabled><span data-icon="arrow"></span></button></div>
           </div>
+          <div class="composer-caption"><span>从一个想法，到一个结果。</span><span><kbd>Enter</kbd> 发送 · <kbd>Shift Enter</kbd> 换行</span></div>
         </form>
       </section>
 
       <aside id="inspector" class="inspector">
-        <div class="inspector-head"><strong>控制台</strong><button id="close-inspector" class="icon-button inspector-close" type="button" aria-label="关闭控制台">×</button></div>
+        <div class="inspector-head"><div><small>WORKSPACE DETAILS</small><strong id="inspector-title">任务详情</strong></div><button id="close-inspector" class="icon-button inspector-close" type="button" aria-label="关闭任务详情"><span data-icon="close"></span></button></div>
         <div class="tabs" role="tablist">
-          <button class="tab active" type="button" data-tab="runtime">运行</button>
-          <button class="tab" type="button" data-tab="memory">记忆</button>
-          <button class="tab" type="button" data-tab="agents">子代理</button>
-          <button class="tab" type="button" data-tab="schedules">定时</button>
-          <button class="tab" type="button" data-tab="graph">图谱</button>
-          <button class="tab" type="button" data-tab="mcp">MCP</button>
-          <button class="tab" type="button" data-tab="config">配置</button>
+          <button id="tab-runtime" class="tab active" role="tab" aria-selected="true" aria-controls="panel-runtime" type="button" data-tab="runtime">运行状态</button>
+          <button id="tab-agents" class="tab" role="tab" aria-selected="false" aria-controls="panel-agents" type="button" data-tab="agents">协作</button>
         </div>
 
         <div class="panel active" data-panel="runtime">
@@ -57,9 +80,12 @@
         </div>
 
         <div class="panel" data-panel="memory">
+          <div class="page-grid"><section class="page-card">
           <div class="panel-toolbar"><div><div class="section-title">长期记忆</div><small>会注入每次模型请求</small></div><button id="save-memory" class="small-button" type="button">保存</button></div>
           <textarea id="memory-editor" class="editor" spellcheck="false" aria-label="长期记忆"></textarea>
           <div id="memory-stats" class="memory-stats"></div>
+          </section><section class="page-card">
+          <div class="section-title">记忆片段</div><p class="hint">搜索、补充和整理可持续使用的信息。</p>
           <form id="memory-search-form" class="inline-form section-gap">
             <label class="sr-only" for="memory-search">搜索语义记忆</label>
             <input id="memory-search" placeholder="搜索语义记忆" />
@@ -74,8 +100,7 @@
               <button class="primary-button" type="submit">保存结构化记忆</button>
             </form>
           </details>
-          <div class="section-title section-gap">已安装技能</div>
-          <div id="skills" class="stack-list"></div>
+          </section></div>
         </div>
 
         <div class="panel" data-panel="agents">
@@ -84,6 +109,7 @@
         </div>
 
         <div class="panel" data-panel="schedules">
+          <div class="page-grid"><section class="page-card"><div class="section-title">创建自动化</div><p class="hint">描述要重复完成的工作，并设置运行间隔。</p>
           <form id="schedule-form" class="compact-form">
             <label>名称<input id="schedule-name" required placeholder="每日整理" /></label>
             <label>任务<textarea id="schedule-prompt" required rows="3" placeholder="整理工作区中的变更"></textarea></label>
@@ -91,11 +117,13 @@
             <label class="check-row"><input id="schedule-current" type="checkbox" checked />使用当前会话</label>
             <button class="primary-button" type="submit">创建定时任务</button>
           </form>
-          <div class="section-title section-gap">任务列表</div>
+          </section><section class="page-card"><div class="section-title">任务列表</div><p class="hint">查看已安排的任务和下次运行时间。</p>
           <div id="schedules" class="stack-list"></div>
+          </section></div>
         </div>
 
         <div class="panel" data-panel="graph">
+          <section class="page-card graph-controls">
           <label class="check-row"><input id="memory-auto-learn" type="checkbox" />自动学习用户提供的长期信息</label>
           <p class="hint">新事实会增加图谱；重复事实会合并。关闭后停止自动新增，仍可手动添加记忆。删除记忆会隐藏仅由该记忆支持的关系。</p>
           <form id="graph-search-form" class="inline-form">
@@ -103,26 +131,56 @@
             <input id="graph-search" placeholder="筛选实体或关系" />
             <button class="small-button" type="submit">筛选</button>
           </form>
+          </section><div class="page-grid section-gap"><section class="page-card">
           <div id="graph-summary" class="graph-summary"></div>
           <div id="graph-canvas" class="graph-canvas" aria-live="polite"></div>
-          <div class="section-title section-gap">关系</div>
+          </section><section class="page-card"><div class="section-title">知识关系</div>
           <div id="graph-relations" class="relation-list"></div>
+          </section></div>
         </div>
 
         <div class="panel" data-panel="mcp">
-          <div class="panel-toolbar"><div><div class="section-title">MCP 服务</div><small>HTTP / JSON-RPC</small></div><button id="refresh-mcp" class="icon-button" type="button" title="刷新 MCP" aria-label="刷新 MCP">↻</button></div>
+          <div class="tool-tabs" role="tablist" aria-label="工具连接类型">
+            <button class="tool-tab active" type="button" role="tab" aria-selected="true" data-tool-tab="mcp"><span data-icon="tools"></span>MCP 服务</button>
+            <button class="tool-tab" type="button" role="tab" aria-selected="false" data-tool-tab="skills"><span data-icon="spark"></span>Skills</button>
+          </div>
+          <section id="mcp-view" class="tool-view">
+          <div class="panel-toolbar"><div><div class="section-title">已配置的服务</div><small>支持 Streamable HTTP MCP 服务</small></div><div class="page-actions"><button id="refresh-mcp" class="small-button secondary-button" type="button">重新连接</button><button id="add-mcp" class="small-button" type="button">＋ 添加 MCP 服务</button></div></div>
+          <div id="mcp-editor" class="mcp-editor hidden">
+            <div class="panel-toolbar"><div class="section-title" id="mcp-editor-title">添加 MCP 服务</div><button id="cancel-mcp" class="text-button" type="button">取消</button></div>
+            <form id="mcp-form" class="compact-form">
+              <div class="form-columns"><label>服务名称<input id="mcp-name" required maxlength="64" pattern="[A-Za-z0-9_-]+" placeholder="例如 my-search" autocomplete="off" /><small class="hint">使用英文字母、数字、短横线或下划线</small></label><label>连接地址<input id="mcp-url" required placeholder="https://example.com/mcp" autocomplete="off" spellcheck="false" /><small id="mcp-url-hint" class="hint">填写服务提供方的 HTTP / HTTPS MCP 地址</small></label></div>
+              <details id="mcp-auth" class="settings-group"><summary>身份验证与请求头<span>可选配置</span></summary><div class="settings-group-body"><label>请求头（JSON）<textarea id="mcp-headers" rows="4" spellcheck="false" placeholder='{"Authorization": "Bearer your-token"}'></textarea></label><p id="mcp-headers-hint" class="hint">无需验证时留空。密钥保存后不会回显。</p><label id="mcp-clear-headers-row" class="check-row hidden"><input id="mcp-clear-headers" type="checkbox" />清除已保存的请求头</label></div></details>
+              <label class="check-row"><input id="mcp-enabled" type="checkbox" checked />启用此服务</label>
+              <div id="mcp-form-status" class="config-status" role="status"></div>
+              <div class="page-actions"><button id="save-mcp" class="small-button" type="submit">保存并连接</button><span class="hint">保存后立即应用</span></div>
+            </form>
+          </div>
           <div id="mcp-servers" class="stack-list"></div>
-          <p class="hint">在 <code>data/mcp.json</code> 中配置服务，然后刷新。</p>
+          <p class="hint section-gap">在这里管理服务，重启后仍会保留。连接失败的服务可以继续编辑或重新连接。</p>
+          </section>
+          <section id="skills-view" class="tool-view hidden">
+            <div class="skills-intro"><div><div class="section-title">Skills 能力库</div><p class="hint">安装标准 SKILL.md 技能包。任务匹配时，Agent 会先读取技能说明，并可使用其中的脚本和参考资料。</p></div><label class="small-button secondary-button skill-folder-button"><span data-icon="folder"></span>导入文件夹<input id="skill-folder-input" type="file" multiple webkitdirectory directory /></label></div>
+            <div class="skill-install-row">
+              <form id="skill-github-form" class="skill-github-form"><label class="sr-only" for="skill-github-url">GitHub Skill 地址</label><span data-icon="code"></span><input id="skill-github-url" type="url" required placeholder="粘贴 GitHub 中的 Skill 文件夹或 SKILL.md 地址" /><button class="small-button" type="submit">从 GitHub 安装</button></form>
+            </div>
+            <div id="skill-status" class="config-status" role="status"></div>
+            <section class="skills-section"><div class="skills-heading"><div><div class="section-title">已安装</div><small id="skill-installed-count">0 个可用</small></div></div><div id="installed-skills" class="skill-grid"></div></section>
+            <section class="skills-section"><div class="skills-heading"><div><div class="section-title">精选 Skills</div><small>来自公开的 Anthropic Skills 仓库</small></div><label class="skill-search"><span data-icon="search"></span><input id="skill-search" type="search" placeholder="搜索 Skill" /></label></div><div id="skill-catalog" class="skill-grid"></div></section>
+            <p class="hint skill-dependency-note">第三方 Skill 可能需要额外的命令或运行库。安装只保存 Skill 文件，不会自动安装依赖或绕过操作确认。</p>
+          </section>
         </div>
 
         <div class="panel" data-panel="config">
-          <div class="section-title">模型接口</div>
-          <p class="hint config-hint">配置保存在本机的 <code>.env</code> 中；桌面版使用当前用户的应用数据目录。Key 不会再次显示。</p>
+          <div class="model-settings-topbar"><div class="model-settings-tabs" role="tablist" aria-label="模型设置"><button class="model-settings-tab active" type="button" role="tab" aria-selected="true" data-model-settings-tab="models">模型配置</button><button class="model-settings-tab" type="button" role="tab" aria-selected="false" data-model-settings-tab="capabilities">能力设置</button></div><div id="model-list-actions" class="model-list-actions"><label class="model-search"><span data-icon="search"></span><input id="model-search" type="search" placeholder="搜索名称、模型 ID 或提供商" /></label><button id="add-model" class="small-button" type="button"><span data-icon="plus"></span>新增模型</button></div></div>
+          <section id="model-list-view" class="model-settings-view">
+            <div class="model-list-toolbar"><div><div class="section-title">已配置模型</div><p class="hint">启用后可在任务输入框中选择；API Key 仅保存在本机，不会再次显示。</p></div></div>
+            <div class="model-table-head" aria-hidden="true"><span>模型</span><span>提供商</span><span>状态</span><span>操作</span></div>
+            <div id="model-list" class="model-list"></div>
+          </section>
+          <section id="model-capabilities-view" class="model-settings-view hidden">
           <form id="model-config-form" class="compact-form config-form">
-            <label>接口地址<input id="model-base-url" type="url" required placeholder="https://api.example.com/v1" autocomplete="url" /></label>
-            <label>模型名称<input id="model-name" required placeholder="模型 ID" autocomplete="off" /></label>
-            <label>API Key<input id="model-api-key" type="password" placeholder="尚未设置" autocomplete="new-password" /></label>
-            <label id="clear-model-key-row" class="check-row hidden"><input id="clear-model-key" type="checkbox" />清除已保存的 API Key</label>
+            <details class="settings-group"><summary>记忆与向量检索<span>可选配置</span></summary><div class="settings-group-body">
             <label>向量模型<input id="embedding-model" placeholder="例如 qwen3.7-text-embedding-flash" autocomplete="off" /></label>
             <label>向量接口<input id="embedding-base-url" type="url" placeholder="可填写完整的 text-embedding URL" autocomplete="url" /></label>
             <label>接口格式<select id="embedding-format"><option value="auto">自动识别</option><option value="dashscope">DashScope / 千问</option><option value="openai">OpenAI-compatible</option></select></label>
@@ -130,22 +188,80 @@
             <label>向量 API Key<input id="embedding-api-key" type="password" placeholder="默认复用上面的 API Key" autocomplete="new-password" /></label>
             <label id="clear-embedding-key-row" class="check-row hidden"><input id="clear-embedding-key" type="checkbox" />清除已保存的向量 API Key</label>
             <p class="hint policy-hint">千问专用接口会发送 <code>input.texts</code>，也支持在 <code>.env</code> 中使用 <code>DASHSCOPE_API_KEY</code>。</p>
+            </div></details>
+            <details class="settings-group"><summary>联网搜索与地图<span>扩展能力</span></summary><div class="settings-group-body">
             <label>高德地图 MCP Key<input id="amap-api-key" type="password" placeholder="在高德开放平台申请的 Web 服务 Key" autocomplete="new-password" /></label>
             <label id="clear-amap-key-row" class="check-row hidden"><input id="clear-amap-key" type="checkbox" />清除已保存的高德地图 Key</label>
             <p class="hint policy-hint">保存后会自动连接高德地图 MCP，提供地理编码、路线规划、天气、周边搜索等地图工具。</p>
             <label>博查搜索 Key<input id="bocha-api-key" type="password" placeholder="在博查开放平台申请的 API Key" autocomplete="new-password" /></label>
             <label id="clear-bocha-key-row" class="check-row hidden"><input id="clear-bocha-key" type="checkbox" />清除已保存的博查搜索 Key</label>
             <p class="hint policy-hint">保存后模型可使用博查联网搜索，查询实时新闻、赛程和最新网页信息。</p>
+            </div></details>
             <label>审批模式<select id="tool-policy"><option value="always-ask">请求批准审批</option><option value="assistant-approve">帮我批准审批</option><option value="allow-all">直接审批通过</option><option value="workspace-write" hidden>旧模式：工作区自动允许</option><option value="read-only" hidden>旧模式：只读</option><option value="deny-all" hidden>旧模式：全部拒绝</option></select></label>
             <p class="hint policy-hint">命令获批后仍在 WSL2 + bubblewrap 中执行：工作区映射到 /workspace，使用 Bash 和 python3；其他宿主目录未挂载，默认禁止联网。MCP 工具在各自服务端执行。</p>
             <div id="model-config-status" class="config-status" role="status"></div>
-            <button class="primary-button" type="submit">保存模型配置</button>
+            <button class="primary-button" type="submit">保存能力设置</button>
           </form>
+          </section>
         </div>
       </aside>
       <button id="inspector-backdrop" class="backdrop" type="button" aria-label="关闭控制台"></button>
       <div id="toast" class="toast" role="status"></div>
+      <dialog id="command-dialog" class="command-dialog" aria-labelledby="command-title">
+        <div class="command-heading"><strong id="command-title">快速前往</strong><button id="close-search" class="icon-button" type="button" aria-label="关闭搜索"><span data-icon="close"></span></button></div>
+        <label class="sr-only" for="command-input">搜索任务与功能</label>
+        <div class="command-input-wrap"><span data-icon="search"></span><input id="command-input" placeholder="搜索任务、记忆、设置…" autocomplete="off" /></div>
+        <div id="command-results" class="command-results"></div>
+        <div class="command-footer"><span>输入关键词快速定位</span><span><kbd>↑ ↓</kbd> 选择 <kbd>Enter</kbd> 打开 <kbd>Esc</kbd> 关闭</span></div>
+      </dialog>
     </main>
+
+      <dialog id="skill-dialog" class="skill-dialog">
+        <div class="skill-dialog-head"><div><small>SKILL.md</small><strong id="skill-dialog-title">Skill 详情</strong></div><button id="close-skill-dialog" class="icon-button" type="button" aria-label="关闭" title="关闭"><span data-icon="close"></span></button></div>
+        <div id="skill-dialog-files" class="skill-file-list"></div>
+        <pre id="skill-dialog-content"></pre>
+      </dialog>
+      <dialog id="model-dialog" class="model-dialog" aria-labelledby="model-dialog-title">
+        <form id="model-editor-form" method="dialog">
+          <div class="model-dialog-head"><div><small>MODEL CONFIGURATION</small><strong id="model-dialog-title">新增模型</strong></div><button id="close-model-dialog" class="icon-button" type="button" aria-label="关闭" title="关闭"><span data-icon="close"></span></button></div>
+          <div class="model-dialog-body compact-form">
+            <input id="model-editor-id" type="hidden" />
+            <section class="model-form-section"><h3>基本配置</h3><div class="model-form-grid">
+              <label>显示名称<input id="model-editor-name" required maxlength="80" placeholder="例如：GPT-5.4" /></label>
+              <label>模型 ID<input id="model-editor-model" required maxlength="160" placeholder="例如：gpt-5.4" autocomplete="off" /></label>
+              <label>模型提供商<select id="model-editor-provider" required>
+                <option value="OpenAI-compatible">OpenAI 兼容</option>
+                <option value="阿里千问">阿里千问</option>
+                <option value="DeepSeek">DeepSeek</option>
+                <option value="OpenAI">OpenAI</option>
+                <option value="Claude">Claude</option>
+                <option value="Gemini">Gemini</option>
+                <option value="智谱 GLM">智谱 GLM</option>
+                <option value="Moonshot AI">Moonshot AI</option>
+                <option value="豆包">豆包</option>
+                <option value="MiniMax">MiniMax</option>
+                <option value="Groq">Groq</option>
+                <option value="OpenRouter">OpenRouter</option>
+                <option value="Ollama">Ollama</option>
+                <option value="自定义">自定义</option>
+              </select><input id="model-editor-provider-custom" class="provider-custom-input hidden" maxlength="80" placeholder="输入提供商名称" /></label>
+              <label>接口地址<input id="model-editor-base-url" type="url" required placeholder="https://api.example.com/v1" autocomplete="url" /></label>
+              <label class="model-form-wide">API Key<input id="model-editor-api-key" type="password" placeholder="粘贴 API Key" autocomplete="new-password" /></label>
+              <label id="model-editor-clear-key-row" class="check-row model-form-wide hidden"><input id="model-editor-clear-key" type="checkbox" />清除已保存的 API Key</label>
+            </div></section>
+            <section class="model-form-section"><h3>参数与能力</h3><div class="model-form-grid">
+              <label>温度<input id="model-editor-temperature" type="number" min="0" max="2" step="0.1" placeholder="使用模型默认值" /></label>
+              <label>最大输出 tokens<input id="model-editor-max-output" type="number" min="1" max="1000000" step="1" placeholder="使用模型默认值" /></label>
+              <label class="switch-row"><span>启用模型</span><input id="model-editor-enabled" class="model-toggle" type="checkbox" checked /></label>
+              <label class="switch-row"><span>支持工具调用</span><input id="model-editor-tools" class="model-toggle" type="checkbox" checked /></label>
+              <label class="switch-row"><span>支持图片识别</span><input id="model-editor-vision" class="model-toggle" type="checkbox" /></label>
+              <label class="model-form-wide">默认提示词<textarea id="model-editor-system-prompt" rows="4" maxlength="20000" placeholder="可选：每次调用此模型时附加的系统提示词"></textarea></label>
+            </div></section>
+            <div id="model-editor-status" class="config-status" role="status"></div>
+          </div>
+          <div class="model-dialog-actions"><button id="cancel-model-editor" class="small-button secondary-button" type="button">取消</button><button class="small-button" type="submit">保存模型</button></div>
+        </form>
+      </dialog>
     <script type="importmap">{"imports":{"marked":"/vendor/marked.esm.js"}}</script>
     <script type="module" src="/app.js"></script>
   </body>

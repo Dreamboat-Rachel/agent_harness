@@ -38,7 +38,7 @@ npm start
 子代理 分析当前任务
 ```
 
-默认工具策略是 `always-ask`，写文件、执行命令、修改记忆、子代理和 MCP 调用会出现在右侧“运行”面板等待审批。
+默认工具策略是 `always-ask`，写文件、执行命令、修改记忆、子代理和 MCP 调用会出现在右侧“任务详情”面板等待审批。
 
 ## Windows 桌面版（EXE）
 
@@ -80,7 +80,7 @@ npm run desktop:pack:win
 | 运行日志 | `%APPDATA%\Agent Harness\desktop.log` |
 | Agent 文件与命令工作区 | `%USERPROFILE%\AgentHarnessWorkspace` |
 
-首次启动后，直接在“控制台 → 配置”中填写模型地址、模型名称和 Key。需要迁移或备份桌面版时，应同时保存上表中的 `.env`、`data` 和工作区。开发模式为了便于调试会读取仓库根目录 `.env`，但运行数据仍写到当前用户的 Electron 应用目录。
+首次启动后，直接在“模型与设置”中填写模型地址、模型名称和 Key。需要迁移或备份桌面版时，应同时保存上表中的 `.env`、`data` 和工作区。开发模式为了便于调试会读取仓库根目录 `.env`，但运行数据仍写到当前用户的 Electron 应用目录。
 
 还可用以下命令做打包前验证：
 
@@ -123,7 +123,7 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-也可以不手动编辑 `.env`，先运行服务，再在页面的“控制台 → 配置”中填写模型、向量、高德地图和博查搜索 Key。页面保存后立即生效。
+也可以不手动编辑 `.env`，先运行服务，再在“模型与设置”页面中填写模型、向量、高德地图和博查搜索 Key。页面保存后立即生效。
 
 ### 3. 启动与验证
 
@@ -143,7 +143,7 @@ Invoke-RestMethod http://127.0.0.1:4371/api/capabilities
 
 ## 配置模型
 
-打开控制台右侧的“配置”页签，填写兼容 OpenAI Chat Completions 的接口地址、模型名称和 API Key，点击保存即可立即应用。配置会写入项目根目录的 `.env`，Key 不会通过读取接口回传；`.env` 已加入 Git 忽略规则。
+打开“模型与设置”页面，填写兼容 OpenAI Chat Completions 的接口地址、模型名称和 API Key，点击保存即可立即应用。配置会写入项目根目录的 `.env`，Key 不会通过读取接口回传；`.env` 已加入 Git 忽略规则。
 
 也可以复制 `.env.example` 为 `.env` 后编辑。启动时会读取 `.env`；若同名变量已在进程环境中设置，则进程环境优先。界面保存的配置立即对当前运行实例生效，并在下次启动时继续使用。
 
@@ -370,9 +370,16 @@ data/
   traces/*.jsonl         追加式事件记录
   memory/MEMORY.md       长期记忆
   skills/*/SKILL.md      本地技能
+  skills/.registry.json  Skill 来源与启停状态
   mcp.json               MCP 服务配置
   workspace/             Agent 文件与命令工作区
 ```
+
+在“工具连接”页面点击“添加 MCP 服务”，填写名称、HTTP / HTTPS 地址及可选请求头即可保存。页面支持编辑、启用、停用和删除服务，直接写入当前数据目录的 `mcp.json`（默认是 `data/mcp.json`；桌面版使用应用数据目录），保存后立即重新连接，重启后保留。编辑时地址或请求头留空会保留原配置；请求头也可以勾选清除。密钥不会在列表或编辑表单中回显。
+
+同一页面的“Skills”分区用于管理标准 `SKILL.md` 技能包，支持从精选公开目录安装、粘贴公开 GitHub 文件夹链接安装，或导入本机完整 Skill 文件夹。导入会保留 `scripts/`、`references/`、`assets/` 等资源以及二进制文件。启用的 Skill 会出现在 Agent 的能力列表中；任务匹配时 Agent 会先读取其说明，并可通过 `read_skill_file` 读取引用文件。命令沙箱把技能目录只读挂载到 `/skills/<name>`，因此获批的命令也可以使用 Skill 自带脚本。
+
+Skill 安装不会自动安装第三方依赖，也不会改变工具审批规则。停用后 Agent 不再自动读取该 Skill；卸载会先把目录移入本机 `skills/.trash/`，避免直接永久删除。为了避免服务端请求被滥用，从链接安装仅接受公开的 `github.com` 或 `raw.githubusercontent.com` HTTPS 地址。
 
 MCP 配置示例：
 
@@ -399,7 +406,7 @@ MCP 配置示例：
 }
 ```
 
-也可以直接在配置页填写“高德地图 MCP Key”。保存后会完成 MCP 初始化、会话 ID 维护和工具发现。高德地图 MCP 可向模型提供地理编码、逆地理编码、IP 定位、天气、路线规划、距离测量和 POI 搜索等能力。修改其他 MCP 配置后可在界面 MCP 页签点击刷新。当前复刻支持 Streamable HTTP、HTTP JSON 和 SSE 响应，不支持 stdio transport。
+也可以直接在“模型与设置”页填写“高德地图 MCP Key”。保存后会完成 MCP 初始化、会话 ID 维护和工具发现。高德地图 MCP 可向模型提供地理编码、逆地理编码、IP 定位、天气、路线规划、距离测量和 POI 搜索等能力。手动修改 MCP 配置文件后，可在“工具连接”页面点击“重新连接”。当前复刻支持 Streamable HTTP、HTTP JSON 和 SSE 响应，不支持 stdio transport。
 
 联网查询使用内置博查 Web Search 工具。在配置页填写“博查搜索 Key”，或在 `.env` 中设置：
 

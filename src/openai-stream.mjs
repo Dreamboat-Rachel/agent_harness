@@ -5,12 +5,15 @@ export async function readCompletionStream(stream, onToken) {
   const decoder = new TextDecoder();
   const toolCalls = new Map();
   let content = "";
+  let model = null;
   let buffer = "";
   const consume = (line) => {
     if (!line.startsWith("data:")) return;
     const data = line.slice(5).trim();
     if (!data || data === "[DONE]") return;
-    const chunk = JSON.parse(data).choices?.[0]?.delta || {};
+    const response = JSON.parse(data);
+    if (typeof response.model === "string" && response.model) model = response.model;
+    const chunk = response.choices?.[0]?.delta || {};
     const text = typeof chunk.content === "string" ? chunk.content : Array.isArray(chunk.content) ? chunk.content.map((part) => part.text || "").join("") : "";
     if (text) { content += text; onToken(text); }
     for (const part of chunk.tool_calls || []) {
@@ -33,6 +36,7 @@ export async function readCompletionStream(stream, onToken) {
   if (buffer.trim()) consume(buffer);
   return {
     content,
+    model,
     toolCalls: [...toolCalls.values()].map((call) => ({ id: call.id || randomUUID(), name: call.name, arguments: call.arguments || "{}" }))
   };
 }

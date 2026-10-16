@@ -134,7 +134,7 @@ function createWindow() {
     minHeight: 620,
     show: false,
     icon: path.join(app.getAppPath(), "desktop", "icon.png"),
-    backgroundColor: "#11130f",
+    backgroundColor: "#f8f9f5",
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
@@ -153,19 +153,23 @@ function createWindow() {
   win.webContents.on("will-navigate", (event, url) => {
     if (!url.startsWith(`${serverOrigin}/`)) event.preventDefault();
   });
-  win.webContents.once("did-finish-load", () => {
+  win.webContents.once("did-finish-load", async () => {
     if (!SMOKE_MODE) return;
-    setTimeout(() => {
-      void win.webContents.capturePage().then((image) => {
-        const output = process.env.PENGUIN_DESKTOP_SMOKE_FILE || path.join(desktopPaths().userRoot, "desktop-smoke.png");
-        fs.mkdirSync(path.dirname(output), { recursive: true });
-        fs.writeFileSync(output, image.toPNG());
-      }).then(() => app.quit()).catch((error) => {
-        process.exitCode = 1;
-        appendLog(desktopPaths().logFile, "smoke:error", `${error.stack || error}\n`);
-        app.quit();
-      });
-    }, 800);
+    try {
+      const deadline = Date.now() + START_TIMEOUT_MS;
+      while (!(await win.webContents.executeJavaScript('document.body.dataset.ready === "true"'))) {
+        if (Date.now() >= deadline) throw new Error("等待界面初始化超时");
+        await delay(POLL_INTERVAL_MS);
+      }
+      await win.webContents.executeJavaScript('Promise.all([document.fonts.ready, ...document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => {}))])');
+      const image = await win.webContents.capturePage();
+      const output = process.env.PENGUIN_DESKTOP_SMOKE_FILE || path.join(desktopPaths().userRoot, "desktop-smoke.png");
+      fs.mkdirSync(path.dirname(output), { recursive: true });
+      fs.writeFileSync(output, image.toPNG());
+    } catch (error) {
+      process.exitCode = 1;
+      appendLog(desktopPaths().logFile, "smoke:error", `${error.stack || error}\n`);
+    } finally { app.quit(); }
   });
   void win.loadURL(serverOrigin);
 }

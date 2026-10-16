@@ -2,9 +2,11 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 
 export class CommandSandbox {
-  constructor({ workspaceRoot, network = "none", distro = process.env.SANDBOX_WSL_DISTRO || "Ubuntu" } = {}) {
+  constructor({ workspaceRoot, skillsRoot = "", network = "none", distro = process.env.SANDBOX_WSL_DISTRO || "Ubuntu" } = {}) {
     this.workspaceRoot = path.resolve(workspaceRoot);
     this.workspaceLinux = process.platform === "win32" ? windowsPathToWsl(this.workspaceRoot) : this.workspaceRoot;
+    this.skillsRoot = skillsRoot ? path.resolve(skillsRoot) : "";
+    this.skillsLinux = this.skillsRoot ? (process.platform === "win32" ? windowsPathToWsl(this.skillsRoot) : this.skillsRoot) : "";
     this.network = network === "allow" ? "allow" : "none";
     this.distro = distro;
     this.backend = process.platform === "win32" ? "wsl2-bubblewrap" : "bubblewrap";
@@ -31,7 +33,7 @@ export class CommandSandbox {
       available: this.available, backend: this.backend,
       enforcement: this.available ? "mount+pid+network namespaces" : "fail-closed",
       filesystem: this.available ? "workspace-only" : "blocked",
-      readScope: this.available ? "/workspace plus Linux runtime" : "none",
+      readScope: this.available ? `/workspace${this.skillsLinux ? " and read-only /skills" : ""} plus Linux runtime` : "none",
       network: this.network, shell: "bash", distro: this.distro, error: this.error
     };
   }
@@ -57,7 +59,9 @@ export class CommandSandbox {
       "--tmpfs", "/tmp", "--dir", "/tmp/home",
       "--setenv", "HOME", "/tmp/home", "--setenv", "TMPDIR", "/tmp",
       "--setenv", "LANG", "C.UTF-8", "--setenv", "PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-      "--bind", this.workspaceLinux, "/workspace", "--chdir", "/workspace",
+      "--bind", this.workspaceLinux, "/workspace",
+      ...(this.skillsLinux ? ["--ro-bind", this.skillsLinux, "/skills"] : []),
+      "--chdir", "/workspace",
       "/bin/bash", "--noprofile", "--norc", "-c", String(command || "")
     ];
   }
