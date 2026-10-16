@@ -1,23 +1,72 @@
 # Agent Harness
 
-这是一个可独立运行的 智能体协作项目，用于理解和复现 Agent Harness 的核心运行链路。
+Agent Harness 是一款面向个人工作流的 AI 智能体协作应用，支持多模型对话、文件工作区、长期记忆、知识图谱、Skills、MCP 工具连接与定时自动化。Windows x64 桌面安装包可从 [GitHub Releases](https://github.com/Dreamboat-Rachel/agent_harness/releases/latest) 下载。
 
-仓库内同时保留了两套项目：
+## 使用文档
 
-- 根目录：轻量独立复刻，使用 LangGraph 编排专业记忆流程，适合学习和二次开发。
-- `agent_harness/`：Apache-2.0 的官方 `v0.2.13` 完整源码，固定在提交 `691ae72f423581e2be145210a942715c79a667ba`。
+### 首次使用
+
+1. 下载并运行 Windows x64 安装包，按提示完成安装后打开 Agent Harness。
+2. 进入左侧“模型与设置”，点击“新增模型”，填写模型名称、提供商、服务商给出的模型 ID、OpenAI-compatible API 地址和 API Key，启用后保存。
+3. 回到“工作台”，在输入框旁选择刚启用的模型，输入任务并发送。也可以点击输入框左侧的“+”添加文件作为本轮参考资料。
+
+模型 API Key 保存在本机应用数据中，列表不会再次显示已保存的 Key。服务商要求的 API 地址和模型 ID 应以其官方文档为准。
+
+### 工作台与工具审批
+
+- 每条新消息都会作为一个任务在当前会话中运行；左侧会话列表可创建、切换和搜索会话。
+- Agent 需要读写工作区、运行命令或调用已连接的工具时，会按当前审批模式处理。默认“请求批准审批”会先等待你确认；在右侧“任务详情”中可以查看工具、参数和执行结果。
+- 文件工具和命令工具操作的是 Agent 工作区，不是任意电脑目录。Windows 桌面版的默认工作区是 `%USERPROFILE%\AgentHarnessWorkspace`。
+- “直接审批通过”会跳过确认，请只在信任当前模型、工具和任务时使用。命令仍应受沙箱能力状态限制。
+
+### 记忆与知识图谱
+
+- “记忆空间”用于查看和整理长期记忆。长期记忆会作为背景信息加入后续模型请求；结构化记忆可记录偏好、项目事实、决策和约束。
+- “知识图谱”展示记忆中实体之间的关系。关闭自动学习后，不会再从新对话自动增加记忆；仍可手动添加。
+- 记忆可能包含你主动提供的个人或项目资料。请勿保存密码、API Key 或其他敏感凭证。
+
+### 自动化
+
+1. 打开“自动化”，填写名称和任务描述，写清楚需要重复完成的工作。
+2. 设置运行间隔（分钟），例如 `60` 表示每 60 分钟运行一次。
+3. 勾选“使用当前会话”会复用当前会话上下文；取消勾选后，任务会在独立会话中运行。
+4. 创建后可在任务列表查看下次运行时间，并管理已安排的任务。
+
+自动化执行时仍遵循应用的工具审批策略；需要人工确认的操作可能会等待审批。
+
+### 工具连接与 Skills
+
+- 在“工具连接”下的“MCP 服务”页添加 Streamable HTTP MCP：填写服务名称和服务地址，可选填写身份验证请求头，然后保存并连接。密钥不会在页面中回显。
+- 在同页的“Skills”页，可从精选目录安装、导入本机 Skill 文件夹，或提供公开 GitHub Skill 地址。任务匹配时 Agent 会读取已启用 Skill 的说明和参考文件。
+- Skill 安装不会自动安装其依赖，也不会跳过工具审批。只安装可信来源的 Skill；第三方 MCP 服务会在服务提供方的环境中执行。
+
+### 模型能力与常见问题
+
+- “模型与设置”中的“能力设置”可以配置向量检索、联网搜索、地图能力和审批模式。向量服务是可选项；未配置时仍可使用基础记忆检索。
+- 回复自称的模型身份不一定可靠。会话消息下方显示应用请求的模型 ID 和接口返回的模型标识，可用它们核对请求信息；这不等同于独立验证服务商的底层部署。
+- 如果模型无法连接，先检查 API 地址、模型 ID、API Key 和网络；如果工具列表为空，检查对应 MCP 服务状态及其服务端配置。
+
+### 数据与平台
+
+- 桌面版配置和记忆保存在当前 Windows 用户的 `%APPDATA%\Agent Harness`，工作区位于 `%USERPROFILE%\AgentHarnessWorkspace`。重装或换电脑前，请备份应用数据目录与工作区。
+- 不要把 `.env`、模型配置文件、API Key 或真实用户数据提交到 Git，也不要把无登录保护的本地服务直接暴露到公网。
+- 当前提供 Windows x64 桌面安装包和 Linux 桌面构建目标；尚未提供原生 iOS 应用。iPhone 不能安装 Windows `.exe`。
+
+## 开发与部署
+
+仓库根目录包含 Agent Harness 桌面端与本地服务源码；`agent_harness/` 目录保留了独立的上游项目源码，日常使用根目录应用时无需进入该目录。
 
 ## 项目结构
 
 ```text
-./                    当前轻量复刻版（默认端口 4371）
-./agent_harness/      官方 v0.2.13 源码
-./data/               当前复刻版的运行数据与 Agent 工作区
+./                    Agent Harness 应用源码（Web 服务默认端口 4371）
+./agent_harness/      独立的上游项目源码
+./data/               开发模式运行数据与 Agent 工作区
 ```
 
-下文除“运行官方源码”一节外，命令都在仓库根目录执行。
+以下命令均在仓库根目录执行。
 
-## 快速启动根目录复刻
+## 从源码启动 Web 服务
 
 要求 Node.js 24 或更高版本。命令工具的强隔离在 Windows 上使用 WSL2 + `bubblewrap`，在 Linux 上直接使用原生 `bubblewrap`；缺少它时聊天与文件工具仍可用，但命令工具会拒绝执行。首次运行先安装依赖：
 
@@ -42,7 +91,7 @@ npm start
 
 ## Windows 桌面版（EXE）
 
-根目录现已包含 Electron 外壳。安装版会在本机启动内置服务并自动选择空闲端口，不需要另外打开 PowerShell，也不会占用 Web 版默认的 `4371` 端口。关闭桌面窗口时，内置服务会一同安全退出。
+Electron 桌面版会在本机启动内置服务并自动选择空闲端口，不需要另外打开 PowerShell，也不会占用 Web 版默认的 `4371` 端口。关闭桌面窗口时，内置服务会一同安全退出。
 
 开发调试：
 
@@ -75,12 +124,12 @@ npm run desktop:pack:win
 
 | 内容 | Windows 安装版位置 |
 | --- | --- |
-| 模型及工具密钥 | `%APPDATA%\Agent Harness\.env` |
-| SQLite、记忆、图谱、MCP | `%APPDATA%\Agent Harness\data` |
+| 模型列表及模型 Key | `%APPDATA%\Agent Harness\data\models.json` |
+| SQLite、记忆、图谱、MCP 及能力设置 | `%APPDATA%\Agent Harness\data` 与 `.env` |
 | 运行日志 | `%APPDATA%\Agent Harness\desktop.log` |
 | Agent 文件与命令工作区 | `%USERPROFILE%\AgentHarnessWorkspace` |
 
-首次启动后，直接在“模型与设置”中填写模型地址、模型名称和 Key。需要迁移或备份桌面版时，应同时保存上表中的 `.env`、`data` 和工作区。开发模式为了便于调试会读取仓库根目录 `.env`，但运行数据仍写到当前用户的 Electron 应用目录。
+首次启动后，直接在“模型与设置”中添加模型并填写模型地址、模型 ID 和 Key。需要迁移或备份桌面版时，应同时保存上表中的 `.env`、`data` 和工作区。开发模式为了便于调试会读取仓库根目录 `.env`，但运行数据仍写到当前用户的 Electron 应用目录。
 
 还可用以下命令做打包前验证：
 
@@ -143,7 +192,7 @@ Invoke-RestMethod http://127.0.0.1:4371/api/capabilities
 
 ## 配置模型
 
-打开“模型与设置”页面，填写兼容 OpenAI Chat Completions 的接口地址、模型名称和 API Key，点击保存即可立即应用。配置会写入项目根目录的 `.env`，Key 不会通过读取接口回传；`.env` 已加入 Git 忽略规则。
+在桌面版打开“模型与设置”，通过“新增模型”添加一项配置；填写名称、兼容 OpenAI Chat Completions 的接口地址、服务商提供的模型 ID 和 API Key，保存后即可选择使用。桌面版的模型列表与模型 Key 保存在当前用户应用数据目录的 `data/models.json`；从源码启动的 Web 服务使用 `PENGUIN_HOME` 指定的数据目录保存模型列表。旧式单模型环境变量仍可从项目根目录 `.env` 读取。密钥不会通过读取接口回传，`.env` 已加入 Git 忽略规则。
 
 也可以复制 `.env.example` 为 `.env` 后编辑。启动时会读取 `.env`；若同名变量已在进程环境中设置，则进程环境优先。界面保存的配置立即对当前运行实例生效，并在下次启动时继续使用。
 
@@ -326,10 +375,10 @@ Windows 同样应备份根目录 `.env` 与 `data`。不要只备份 `harness.db
 
 ### 5. 当前部署边界
 
-- 根目录复刻版是单机 Node.js + SQLite 应用，不要让多个进程或多台机器同时共享同一个 `data` 目录。
+- 当前服务是单机 Node.js + SQLite 应用，不要让多个进程或多台机器同时共享同一个 `data` 目录。
 - 没有内置登录、TLS、限流和多租户隔离；网络开放必须由反向代理、VPN 或身份网关保护。
 - `.env` 包含模型、向量、高德和博查密钥，应限制为仅运行账户可读，并且不要提交到版本库。
-- 根目录复刻版目前没有 Dockerfile 或 Compose 部署定义；官方源码子目录自带 Docker 方案。
+- 当前应用没有 Dockerfile 或 Compose 部署定义；独立的上游源码子目录自带 Docker 方案。
 - macOS 可以启动 Web 服务，但当前命令沙箱依赖 Linux `bubblewrap`，因此 `run_command` 会 fail-closed，不属于完整支持的部署目标。
 
 模型可调用三个记忆工具：`search_memory`、`remember_fact` 和 `query_knowledge_graph`。管理接口包括：
@@ -359,7 +408,7 @@ Windows 同样应备份根目录 `.env` 与 `data`。不要只备份 `harness.db
 - SQLite 定时任务调度
 - HTTP/SSE MCP 的发现与调用
 - 博查 Web Search 联网查询，支持摘要、时间范围和结果数量参数
-- 响应式 Web 控制台：会话、审批、模型 `.env` 配置、记忆、技能、子代理、定时任务和 MCP 状态
+- 响应式 Web 控制台：会话、审批、多模型配置、能力设置、记忆、技能、子代理、定时任务和 MCP 状态
 - Electron 桌面外壳、随机内置端口、单实例运行和 Windows/Linux 安装包构建
 
 ## 数据目录
@@ -367,6 +416,7 @@ Windows 同样应备份根目录 `.env` 与 `data`。不要只备份 `harness.db
 ```text
 data/
   harness.db             SQLite 主数据
+  models.json            已配置模型及其 API Key
   traces/*.jsonl         追加式事件记录
   memory/MEMORY.md       长期记忆
   skills/*/SKILL.md      本地技能
@@ -406,7 +456,7 @@ MCP 配置示例：
 }
 ```
 
-也可以直接在“模型与设置”页填写“高德地图 MCP Key”。保存后会完成 MCP 初始化、会话 ID 维护和工具发现。高德地图 MCP 可向模型提供地理编码、逆地理编码、IP 定位、天气、路线规划、距离测量和 POI 搜索等能力。手动修改 MCP 配置文件后，可在“工具连接”页面点击“重新连接”。当前复刻支持 Streamable HTTP、HTTP JSON 和 SSE 响应，不支持 stdio transport。
+也可以直接在“模型与设置”页填写“高德地图 MCP Key”。保存后会完成 MCP 初始化、会话 ID 维护和工具发现。高德地图 MCP 可向模型提供地理编码、逆地理编码、IP 定位、天气、路线规划、距离测量和 POI 搜索等能力。手动修改 MCP 配置文件后，可在“工具连接”页面点击“重新连接”。当前应用支持 Streamable HTTP、HTTP JSON 和 SSE 响应，不支持 stdio transport。
 
 联网查询使用内置博查 Web Search 工具。在配置页填写“博查搜索 Key”，或在 `.env` 中设置：
 
@@ -423,31 +473,4 @@ npm run check
 npm test
 ```
 
-测试覆盖 SQLite 恢复和旧 Trace 迁移、知识库路径校验、LangGraph 记忆编排、向量接口、模型 `.env` 配置及密钥保护、事实去重、召回排序、知识图谱、敏感信息拦截、Markdown 安全渲染、MCP、博查联网查询、bubblewrap 沙箱、会话接口，以及等待审批时停止任务。
-
-## 与官方版的边界
-
-根目录复刻已经覆盖核心 Agent Harness 流程，但不与官方完整版等价。尚未复刻的主要大型子系统包括：
-
-- 多用户认证、项目与 Agent 权限模型
-- 运行中 steering、持久化 follow-up 队列和 session fork
-- 完整插件安装、Hook 生命周期与热重载内核
-- stdio MCP transport
-- PTY/WebSocket 交互终端
-- benchmark/evaluation 中心
-- 完整 token 统计、供应商重试与模型配置中心
-- 桌面自动更新和安装包代码签名
-
-## 运行官方源码
-
-需要官方完整功能时进入 `agent_harness/`：
-
-```powershell
-cd agent_harness
-pnpm install
-pnpm dev
-```
-
-官方桌面版使用 `pnpm desktop`。该源码要求 Node.js 24 和 pnpm 11。
-
-官方源码还包含独立的安装脚本、Dockerfile 与 `docker/compose.yaml`；具体生产部署以 [官方中文说明](./agent_harness/README.zh.md) 为准。官方版默认端口、数据目录和首次登录流程与根目录复刻版不同，不要混用两套 `.env` 或数据目录。
+测试覆盖 SQLite 恢复和旧 Trace 迁移、知识库路径校验、LangGraph 记忆编排、向量接口、模型配置及密钥保护、事实去重、召回排序、知识图谱、敏感信息拦截、Markdown 安全渲染、MCP、博查联网查询、bubblewrap 沙箱、会话接口，以及等待审批时停止任务。
