@@ -2,11 +2,12 @@ appId: com.agentharness.desktop
 productName: Agent Harness
 
 directories:
-  output: desktop-dist
+  output: desktop-dist-0.2.0
   buildResources: desktop/build
 
 files:
   - desktop/main.cjs
+  - desktop/preload.cjs
   - desktop/icon.png
   - src/**/*
   - public/**/*

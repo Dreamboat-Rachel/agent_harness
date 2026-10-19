@@ -2,15 +2,28 @@ import { renderMarkdown } from "./markdown.js";
 import { icon, starters, panelNames, statusLabel, orbit } from "./workbench-ui.js";
 
 const state = {
-  sessions: [], current: null, stream: null, capabilities: null, view: "home", page: null, submitting: false, focusUserMessage: null, mcpEditing: null, mcpBusy: false, skillBusy: false, toolTab: "mcp", modelEditing: null, modelSettingsTab: "models",
+  projects: [], projectId: localStorage.getItem("agent-harness-project") || "default", switchingProject: false, sessions: [], current: null, stream: null, capabilities: null, view: "home", page: null, submitting: false, focusUserMessage: null, mcpEditing: null, mcpBusy: false, skillBusy: false, toolTab: "mcp", modelEditing: null, modelSettingsTab: "models",
   expandedToolResults: new Set(), toolResultHeights: new Map(),
   knowledge: { memory: "", skills: [], stats: {} }, memorySearch: { facts: [], graph: { entities: [], relations: [] } },
   graph: { entities: [], relations: [] }, schedules: [], mcp: [], skills: { installed: [], catalog: [] },
-  models: { defaultModelId: null, models: [] }, selectedModelId: localStorage.getItem("agent-harness-model") || "", pendingSources: [],
+  models: { defaultModelId: null, models: [] }, selectedModelId: "", pendingSources: [],
   modelConfig: { baseUrl: "", model: "", embeddingBaseUrl: "", embeddingModel: "", embeddingDimensions: "", embeddingFormat: "auto", policy: "always-ask", apiKeyConfigured: false, embeddingApiKeyConfigured: false, embeddingApiKeySeparateConfigured: false, amapApiKeyConfigured: false }
 };
+let pendingProjectImport = null;
 
 const $ = (id) => document.getElementById(id);
+function confirmInApp(message, { title = "确认操作", confirmText = "确认删除" } = {}) {
+  const dialog = $("app-confirm-dialog");
+  $("app-confirm-title").textContent = title;
+  $("app-confirm-message").textContent = message;
+  $("app-confirm-accept").textContent = confirmText;
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => resolve(dialog.returnValue === "confirm"), { once: true });
+    dialog.showModal();
+    $("app-confirm-cancel").focus();
+  });
+}
+
 const workspacePages = {
   memory: { icon: "memory", description: "管理长期记忆与偏好，让每次协作都能接着上次的理解。" },
   schedules: { icon: "clock", description: "填写名称、任务和运行间隔（分钟；60 表示每小时）。勾选“使用当前会话”可沿用当前对话，取消后会单独创建任务。首次运行在设定间隔后开始，需保持应用运行。" },
@@ -154,7 +167,7 @@ function setupSmoothSelects() {
 async function api(path, options = {}) {
   const response = await fetch(`/api${path}`, {
     ...options,
-    headers: { "content-type": "application/json", ...(options.headers || {}) }
+    headers: { "content-type": "application/json", "x-project-id": state.projectId || "default", ...(options.headers || {}) }
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `请求失败 (${response.status})`);
@@ -179,12 +192,176 @@ function notify(message, kind = "ok") {
 }
 
 function renderSessions() {
-  $("session-count").textContent = state.sessions.length;
-  $("sessions").innerHTML = state.sessions.length
+  const list = $("sessions");
+  if (!list) return;
+  const projectSessions = list.closest(".project-session-list");
+  if (projectSessions) projectSessions.hidden = state.sessions.length === 0;
+  list.innerHTML = state.sessions.length
     ? state.sessions.map((session) => `<div class="session-row ${!state.page && state.view === "task" && session.id === state.current?.id ? "active" : ""}"><button type="button" class="session-item" data-session-id="${escapeHtml(session.id)}"><span>${escapeHtml(session.title === "New Session" ? "未命名任务" : session.title)}</span><small><i class="state-dot ${escapeHtml(session.status)}"></i>${escapeHtml(statusLabel(session.status))} · ${formatTime(session.updatedAt)}</small></button><button type="button" class="session-delete" title="删除任务" aria-label="删除任务：${escapeHtml(session.title)}" data-delete-session="${escapeHtml(session.id)}">×</button></div>`).join("")
-    : '<div class="panel-empty history-empty">好想法，从第一个任务开始。</div>';
+    : "";
   document.querySelectorAll("[data-session-id]").forEach((element) => element.addEventListener("click", () => selectSession(element.dataset.sessionId)));
   document.querySelectorAll("[data-delete-session]").forEach((button) => button.addEventListener("click", () => deleteSession(button.dataset.deleteSession)));
+}
+
+function renderProjects() {
+  const current = state.projects.find((project) => project.id === state.projectId);
+  $("project-list").innerHTML = state.projects.map((project) => {
+    const selected = project.id === current?.id;
+    const displayName = project.isDefault && project.name === "项目" ? "默认工作区" : project.name;
+    return `<div class="project-row ${selected ? "selected" : ""}"><button class="project-option ${selected ? "selected" : ""}" type="button" aria-pressed="${selected}" data-project-id="${escapeHtml(project.id)}"><span data-icon="folder"></span><span class="project-option-copy" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</span></button><span class="project-option-meta"><button class="project-option-chat" type="button" data-new-project-chat="${escapeHtml(project.id)}" title="在 ${escapeHtml(displayName)} 下新建对话" aria-label="在 ${escapeHtml(displayName)} 下新建对话"><span data-icon="edit"></span></button></span>${selected ? `<div class="project-session-list" ${state.sessions.length ? "" : "hidden"}><div id="sessions" class="sessions" aria-label="${escapeHtml(displayName)} 项目对话"></div></div>` : ""}</div>`;
+  }).join("");
+  $("project-list").querySelectorAll("[data-icon]").forEach((element) => { element.innerHTML = icon(element.dataset.icon); });
+  $("create-project").disabled = state.switchingProject;
+  renderSessions();
+}
+
+function modelStorageKey(projectId = state.projectId) {
+  return projectId === "default" ? "agent-harness-model" : `agent-harness-model-${projectId}`;
+}
+
+async function switchProject(projectId) {
+  if (!projectId || state.switchingProject) return false;
+  if (projectId === state.projectId) return true;
+  state.switchingProject = true;
+  renderProjects();
+  state.stream?.close();
+  state.stream = null;
+  state.projectId = projectId;
+  localStorage.setItem("agent-harness-project", projectId);
+  state.selectedModelId = localStorage.getItem(modelStorageKey(projectId)) || "";
+  state.current = null;
+  state.sessions = [];
+  state.page = null;
+  state.view = "home";
+  state.pendingSources = [];
+  state.submitting = false;
+  $("input").value = "";
+  renderProjects();
+  setInspector(false);
+  renderCurrent();
+  try {
+    [state.sessions] = await Promise.all([api("/sessions"), loadControlData()]);
+    if (state.sessions.length) await selectSession(state.sessions[0].id, true);
+    else renderCurrent();
+    renderSessions();
+    return true;
+  } catch (error) { notify(error.message, "error"); return false; }
+  finally { state.switchingProject = false; renderProjects(); }
+}
+
+const ignoredProjectDirectories = new Set([".git", ".hg", ".svn", "node_modules", "dist", "build", "coverage", ".next", ".turbo", ".cache", ".venv", "venv", "target", "release", "releases", "tmp", "temp"]);
+const ignoredProjectFileExtensions = new Set([".zip", ".7z", ".rar", ".tar", ".gz", ".exe", ".msi", ".dmg", ".appimage", ".asar"]);
+const projectUploadChunkBytes = 4 * 1024 * 1024;
+const maxBrowserProjectBytes = 2 * 1024 * 1024 * 1024;
+
+function projectFileIsIgnored(relativePath) {
+  const parts = relativePath.split("/");
+  const filename = parts.at(-1).toLocaleLowerCase();
+  const extension = filename.includes(".") ? filename.slice(filename.lastIndexOf(".")) : "";
+  return parts.some((part) => {
+    const name = part.toLocaleLowerCase();
+    return ignoredProjectDirectories.has(name) || /^desktop-dist(?:[-_.].*)?$/.test(name);
+  }) || ignoredProjectFileExtensions.has(extension);
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 1024 * 1024 * 100 ? 0 : 1)} MB`;
+}
+
+function prepareProjectImport(fileList, linkedFolder = null) {
+  const files = [...fileList].map((item) => {
+    if (item?.file) return item;
+    const pathParts = item.webkitRelativePath?.split("/") || [];
+    return { file: item, rootName: pathParts[0], relativePath: pathParts.length ? pathParts.slice(1).join("/") : item.name };
+  });
+  if (!linkedFolder && !files.length) throw new Error("所选文件夹为空，或浏览器未能读取其中的文件");
+  const rootName = linkedFolder?.name || files[0].rootName || (files[0].relativePath.includes("/") ? files[0].relativePath.split("/")[0] : files[0].file.name);
+  const included = files.filter(({ relativePath }) => relativePath && !projectFileIsIgnored(relativePath));
+  if (!linkedFolder && !included.length) throw new Error("所选文件夹中没有可导入的文件");
+  if (included.length > 20_000) throw new Error("项目文件数量超过 20000 个，请先排除依赖或生成目录");
+  const totalBytes = included.reduce((sum, item) => sum + item.file.size, 0);
+  if (!linkedFolder && totalBytes > maxBrowserProjectBytes) throw new Error("浏览器导入的项目不能超过 2 GB；请排除大型数据和构建产物后重试");
+
+  let projectName = rootName;
+  const existingNames = new Set(state.projects.map((project) => project.name.toLocaleLowerCase()));
+  for (let suffix = 2; existingNames.has(projectName.toLocaleLowerCase()); suffix += 1) projectName = `${rootName} (${suffix})`;
+  pendingProjectImport = { files: included, name: projectName, workspacePath: linkedFolder?.workspacePath || "", totalBytes, excludedCount: files.length - included.length };
+  $("project-import-name").value = projectName;
+  $("project-import-summary").textContent = linkedFolder
+    ? `确认后将链接本机文件夹“${rootName}”，不复制其中的文件。`
+    : `将导入 ${included.length} 个文件（${formatBytes(totalBytes)}）${files.length > included.length ? `，已排除 ${files.length - included.length} 个缓存、依赖或打包文件` : ""}。`;
+  $("project-import-status").textContent = "";
+  $("project-import-confirm").disabled = false;
+  $("project-import-dialog").showModal();
+  $("project-import-name").focus();
+}
+
+async function importBrowserProject(files, projectName, totalBytes) {
+  notify(`正在导入 ${files.length} 个项目文件…`);
+  clearTimeout(notify.timer);
+  notify.timer = setTimeout(() => { document.querySelector("#toast").className = "toast"; }, 60_000);
+  let result;
+  try {
+    result = await api("/projects", { method: "POST", body: JSON.stringify({ name: projectName }) });
+    const projectId = result.project.id;
+    state.projects = result.projects || state.projects;
+    renderProjects();
+    let uploadedBytes = 0;
+    for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
+      const { file, relativePath } = files[fileIndex];
+      let offset = 0;
+      do {
+        const end = Math.min(file.size, offset + projectUploadChunkBytes);
+        const chunk = file.slice(offset, end);
+        const response = await fetch(`/api/projects/files?path=${encodeURIComponent(relativePath)}&offset=${offset}`, {
+          method: "PUT",
+          headers: { "content-type": "application/octet-stream", "x-project-id": projectId },
+          body: chunk
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `上传文件失败：${relativePath}`);
+        offset = end;
+        uploadedBytes += chunk.size;
+        if (fileIndex % 20 === 0 || fileIndex === files.length - 1) {
+          const percent = totalBytes ? Math.floor(uploadedBytes / totalBytes * 100) : 100;
+          notify(`正在导入项目 ${percent}% · ${fileIndex + 1}/${files.length} 个文件`);
+          clearTimeout(notify.timer);
+          notify.timer = setTimeout(() => { document.querySelector("#toast").className = "toast"; }, 60_000);
+        }
+      } while (offset < file.size);
+    }
+    result.importedFiles = files.length;
+  } catch (error) {
+    const refreshed = await api("/projects").catch(() => null);
+    if (refreshed) {
+      state.projects = refreshed.projects || state.projects;
+      renderProjects();
+      const partialProject = state.projects.find((project) => project.id === result?.project?.id || project.name === projectName);
+      if (partialProject) {
+        await switchProject(partialProject.id);
+        throw new Error(`${error.message}；项目已创建，已完成的文件保留在项目中`);
+      }
+    }
+    throw error;
+  }
+  state.projects = result.projects || state.projects;
+  renderProjects();
+  return result;
+}
+
+async function selectProjectFolder() {
+  if (state.switchingProject) return;
+  const desktop = window.agentHarnessDesktop;
+  if (desktop?.selectProjectFolder) {
+    try {
+      const result = await desktop.selectProjectFolder();
+      if (result?.cancelled) return;
+      prepareProjectImport([], result);
+    } catch (error) { notify(error.message, "error"); }
+    return;
+  }
+  $("project-desktop-required-dialog").showModal();
 }
 
 function renderHome() {
@@ -344,7 +521,7 @@ function renderGraph() {
     ? state.graph.relations.slice(0, 40).map((relation) => `<div class="list-item"><button class="delete-button" type="button" aria-label="删除关系" title="删除关系" data-delete-relation="${escapeHtml(relation.id)}">×</button><strong>${escapeHtml(relation.source)}</strong><span class="relation-arrow">${escapeHtml(relation.predicate)} →</span><strong>${escapeHtml(relation.target || relation.targetValue)}</strong></div>`).join("")
     : '<div class="panel-empty">暂无关系</div>';
   document.querySelectorAll("[data-delete-relation]").forEach((button) => button.addEventListener("click", async () => {
-    if (!window.confirm("确定删除这条图谱关系吗？")) return;
+    if (!await confirmInApp("确定删除这条图谱关系吗？此操作无法撤销。")) return;
     try { await api(`/knowledge-graph/relations/${button.dataset.deleteRelation}`, { method: "DELETE" }); await refreshMemory($("memory-search").value.trim()); notify("关系已删除"); }
     catch (error) { notify(error.message, "error"); }
   }));
@@ -397,7 +574,7 @@ function connectStream() {
   state.stream?.close();
   if (!state.current) return;
   const sessionId = state.current.id;
-  const stream = new EventSource(`/api/sessions/${sessionId}/stream`);
+  const stream = new EventSource(`/api/sessions/${sessionId}/stream?projectId=${encodeURIComponent(state.projectId)}`);
   state.stream = stream;
   stream.addEventListener("message", (event) => {
     if (state.current?.id !== sessionId) return;
@@ -469,7 +646,7 @@ async function selectSession(id, keepHome = false) {
 
 async function deleteSession(id) {
   const session = state.sessions.find((item) => item.id === id);
-  if (!session || !window.confirm(`确定删除会话“${session.title}”吗？删除后无法恢复。`)) return;
+  if (!session || !await confirmInApp(`确定删除会话“${session.title}”吗？删除后无法恢复。`)) return;
   try {
     await api(`/sessions/${id}`, { method: "DELETE" });
     state.sessions = state.sessions.filter((item) => item.id !== id);
@@ -504,8 +681,8 @@ async function loadControlData() {
 function renderModels() {
   const enabled = state.models.models.filter((entry) => entry.enabled);
   if (!enabled.some((entry) => entry.id === state.selectedModelId)) state.selectedModelId = enabled.find((entry) => entry.id === state.models.defaultModelId)?.id || enabled[0]?.id || "";
-  if (state.selectedModelId) localStorage.setItem("agent-harness-model", state.selectedModelId);
-  else localStorage.removeItem("agent-harness-model");
+  if (state.selectedModelId) localStorage.setItem(modelStorageKey(), state.selectedModelId);
+  else localStorage.removeItem(modelStorageKey());
   $("composer-model").innerHTML = enabled.length
     ? enabled.map((entry) => `<option value="${escapeHtml(entry.id)}">${escapeHtml(entry.name)}</option>`).join("")
     : '<option value="">体验模式</option>';
@@ -677,7 +854,7 @@ async function refreshMemory(query = "") {
 }
 
 async function deleteMemory(id) {
-  if (!window.confirm("确定删除这条结构化记忆吗？")) return;
+  if (!await confirmInApp("确定删除这条结构化记忆吗？此操作无法撤销。")) return;
   try { await api(`/memory/facts/${id}`, { method: "DELETE" }); await refreshMemory($("memory-search").value.trim()); notify("记忆已删除"); }
   catch (error) { notify(error.message, "error"); }
 }
@@ -751,6 +928,17 @@ async function createSession() {
   return session;
 }
 
+async function startProjectConversation(projectId) {
+  try {
+    const switched = await switchProject(projectId);
+    if (!switched || state.projectId !== projectId || state.switchingProject) throw new Error("项目切换未完成，请重试");
+    const session = await createSession();
+    if (session.projectId && session.projectId !== projectId) throw new Error("新对话未关联到所选项目，请重试");
+    setInspector(false);
+    $("input").focus();
+  } catch (error) { notify(error.message, "error"); }
+}
+
 $("new-session").addEventListener("click", async () => {
   try {
     await createSession();
@@ -759,6 +947,59 @@ $("new-session").addEventListener("click", async () => {
   } catch (error) { notify(error.message, "error"); }
 });
 
+$("project-list").addEventListener("click", (event) => {
+  const newChat = event.target.closest("[data-new-project-chat]");
+  if (newChat) {
+    void startProjectConversation(newChat.dataset.newProjectChat);
+    return;
+  }
+  const option = event.target.closest("[data-project-id]");
+  if (!option) return;
+  void switchProject(option.dataset.projectId);
+});
+$("create-project").addEventListener("click", () => { void selectProjectFolder(); });
+$("project-desktop-required-close").addEventListener("click", () => $("project-desktop-required-dialog").close());
+$("project-desktop-required-ok").addEventListener("click", () => $("project-desktop-required-dialog").close());
+
+async function confirmProjectImport() {
+  const pending = pendingProjectImport;
+  const name = $("project-import-name").value.trim();
+  if (!pending || !name) return;
+  const submit = $("project-import-confirm");
+  submit.disabled = true;
+  $("project-import-cancel").disabled = true;
+  $("project-import-close").disabled = true;
+  try {
+    let result;
+    if (pending.workspacePath) {
+      $("project-import-status").textContent = "正在添加项目工作区…";
+      result = await window.agentHarnessDesktop.registerProjectFolder({ name, workspacePath: pending.workspacePath });
+      state.projects = result.projects || state.projects;
+    } else {
+      $("project-import-status").textContent = "正在导入项目文件，请稍候…";
+      result = await importBrowserProject(pending.files, name, pending.totalBytes);
+    }
+    state.projects = result.projects || state.projects;
+    renderProjects();
+    pendingProjectImport = null;
+    $("project-import-dialog").close();
+    await switchProject(result.project.id);
+    notify(pending.workspacePath ? "项目已添加" : `项目已导入 · ${result.importedFiles} 个文件`);
+  } catch (error) {
+    $("project-import-status").textContent = error.message;
+    notify(error.message, "error");
+    if (state.projects.some((project) => project.name === name)) renderProjects();
+  } finally {
+    submit.disabled = false;
+    $("project-import-cancel").disabled = false;
+    $("project-import-close").disabled = false;
+  }
+}
+
+$("project-import-form").addEventListener("submit", (event) => { event.preventDefault(); void confirmProjectImport(); });
+$("project-import-cancel").addEventListener("click", () => { pendingProjectImport = null; $("project-import-dialog").close(); });
+$("project-import-close").addEventListener("click", () => { pendingProjectImport = null; $("project-import-dialog").close(); });
+$("project-import-dialog").addEventListener("click", (event) => { if (event.target === $("project-import-dialog") && !$("project-import-confirm").disabled) { pendingProjectImport = null; $("project-import-dialog").close(); } });
 async function saveRuntimeSetting(input) {
   try {
     const saved = await api("/config/runtime", { method: "PUT", body: JSON.stringify(input) });
@@ -1010,7 +1251,7 @@ $("installed-skills").addEventListener("click", async (event) => {
   const remove = event.target.closest("[data-delete-skill]");
   const name = toggle?.dataset.toggleSkill || remove?.dataset.deleteSkill;
   if (!name) return;
-  if (remove && !window.confirm(`确定卸载 Skill“${name}”吗？`)) return;
+  if (remove && !await confirmInApp(`确定卸载 Skill“${name}”吗？`, { title: "卸载 Skill", confirmText: "确认卸载" })) return;
   const skill = state.skills.installed.find((item) => item.name === name);
   await mutateSkills(`/skills/${encodeURIComponent(name)}`, { method: remove ? "DELETE" : "PUT", ...(remove ? {} : { body: JSON.stringify({ enabled: !skill.enabled }) }) }, remove ? "Skill 已卸载" : "Skill 状态已更新");
 });
@@ -1094,7 +1335,7 @@ $("mcp-servers").addEventListener("click", async (event) => {
   const remove = event.target.closest("[data-delete-mcp]");
   const name = toggle?.dataset.toggleMcp || remove?.dataset.deleteMcp;
   if (!name) return;
-  if (remove && !window.confirm(`确定移除 MCP 服务“${name}”吗？`)) return;
+  if (remove && !await confirmInApp(`确定移除 MCP 服务“${name}”吗？`, { title: "移除 MCP 服务", confirmText: "确认移除" })) return;
   const server = state.mcp.find((item) => item.name === name);
   const saved = await mutateMcp(`/mcp/servers/${encodeURIComponent(name)}`, { method: remove ? "DELETE" : "PUT", ...(remove ? {} : { body: JSON.stringify({ enabled: server.enabled === false }) }) }, remove ? "MCP 服务已移除" : "服务状态已更新");
   if (saved && state.mcpEditing === name) closeMcpEditor();
@@ -1180,7 +1421,7 @@ $("model-list").addEventListener("click", async (event) => {
   const remove = event.target.closest("[data-delete-model]");
   if (!remove) return;
   const entry = state.models.models.find((model) => model.id === remove.dataset.deleteModel);
-  if (!window.confirm(`确定删除模型“${entry?.name || "未命名模型"}”吗？`)) return;
+  if (!await confirmInApp(`确定删除模型“${entry?.name || "未命名模型"}”吗？`, { title: "删除模型" })) return;
   await updateModels(`/models/${encodeURIComponent(remove.dataset.deleteModel)}`, { method: "DELETE", body: "{}" }, "模型已删除");
 });
 
@@ -1333,6 +1574,11 @@ setupSmoothSelects();
 renderCurrent();
 
 try {
+  const projectResult = await api("/projects");
+  state.projects = projectResult.projects || [];
+  if (!state.projects.some((project) => project.id === state.projectId)) state.projectId = "default";
+  renderProjects();
+  state.selectedModelId = localStorage.getItem(modelStorageKey()) || "";
   [state.sessions] = await Promise.all([api("/sessions"), loadControlData()]);
   if (state.sessions.length) await selectSession(state.sessions[0].id, true);
   else renderCurrent();

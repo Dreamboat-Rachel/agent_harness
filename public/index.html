@@ -21,8 +21,10 @@
           <button class="nav-item" data-open-panel="graph" type="button"><span data-icon="graph"></span>知识图谱</button>
           <button class="nav-item" data-open-panel="mcp" type="button"><span data-icon="tools"></span>工具连接</button>
         </nav>
-        <div class="nav-label history-heading"><span>最近任务</span><span id="session-count">0</span></div>
-        <div id="sessions" class="sessions" aria-label="会话列表"></div>
+        <section class="projects-panel" aria-label="项目">
+          <div class="projects-heading"><span class="projects-heading-label">项目</span><button id="create-project" type="button" title="选择电脑中的项目文件夹" aria-label="选择电脑中的项目文件夹"><span data-icon="plus"></span></button></div>
+          <div id="project-list" class="project-list"></div>
+        </section>
         <div class="sidebar-bottom">
           <button class="nav-item" data-open-panel="config" type="button"><span data-icon="settings"></span>模型与设置</button>
           <div class="sidebar-foot"><span class="profile-avatar">我</span><div><strong>我的工作空间</strong><small>Personal workspace</small></div><span class="workspace-label">LOCAL</span></div>
@@ -221,6 +223,31 @@
         <div class="skill-dialog-head"><div><small>SKILL.md</small><strong id="skill-dialog-title">Skill 详情</strong></div><button id="close-skill-dialog" class="icon-button" type="button" aria-label="关闭" title="关闭"><span data-icon="close"></span></button></div>
         <div id="skill-dialog-files" class="skill-file-list"></div>
         <pre id="skill-dialog-content"></pre>
+      </dialog>
+      <dialog id="project-import-dialog" class="project-import-dialog" aria-labelledby="project-import-title">
+        <form id="project-import-form">
+          <div class="project-import-head"><div><small>PROJECT WORKSPACE</small><strong id="project-import-title">导入项目</strong></div><button id="project-import-close" class="icon-button" type="button" aria-label="关闭" title="关闭"><span data-icon="close"></span></button></div>
+          <div class="project-import-body compact-form">
+            <label>项目名称<input id="project-import-name" required maxlength="60" autocomplete="off" /></label>
+            <p id="project-import-summary" class="hint"></p>
+            <p id="project-import-status" class="config-status" role="status"></p>
+          </div>
+          <div class="project-import-actions"><button id="project-import-cancel" class="small-button secondary-button" type="button">取消</button><button id="project-import-confirm" class="small-button" type="submit">确认并导入</button></div>
+        </form>
+      </dialog>
+      <dialog id="project-desktop-required-dialog" class="project-desktop-required-dialog" aria-labelledby="project-desktop-required-title">
+        <div class="project-desktop-required-content">
+          <div class="project-import-head"><div><small>LOCAL PROJECT ACCESS</small><strong id="project-desktop-required-title">请使用桌面版添加项目</strong></div><button id="project-desktop-required-close" class="icon-button" type="button" aria-label="关闭" title="关闭"><span data-icon="close"></span></button></div>
+          <div class="project-import-body"><p class="hint">当前打开的是浏览器预览。浏览器必须单独授权才能读取本机文件夹，因此网页模式无法在不显示权限提示的情况下添加项目。桌面版可直接关联本机项目文件夹。</p></div>
+          <div class="project-import-actions"><button id="project-desktop-required-ok" class="small-button" type="button">知道了</button></div>
+        </div>
+      </dialog>
+      <dialog id="app-confirm-dialog" class="app-confirm-dialog" aria-labelledby="app-confirm-title" aria-describedby="app-confirm-message">
+        <form id="app-confirm-form" method="dialog">
+          <div class="app-confirm-mark"><span data-icon="shield"></span></div>
+          <div class="app-confirm-copy"><strong id="app-confirm-title">确认操作</strong><p id="app-confirm-message"></p></div>
+          <div class="app-confirm-actions"><button id="app-confirm-cancel" class="small-button secondary-button" value="cancel">取消</button><button id="app-confirm-accept" class="small-button danger-button" value="confirm">确认删除</button></div>
+        </form>
       </dialog>
       <dialog id="model-dialog" class="model-dialog" aria-labelledby="model-dialog-title">
         <form id="model-editor-form" method="dialog">

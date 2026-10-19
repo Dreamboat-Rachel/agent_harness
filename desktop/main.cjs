@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell, utilityProcess } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell, utilityProcess } = require("electron");
 const { randomBytes } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -14,6 +14,49 @@ let serverOrigin = "";
 let desktopToken = "";
 let quitting = false;
 let stopPromise = null;
+
+ipcMain.handle("agent-harness:select-project-folder", async (event) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame || !serverOrigin || !desktopToken) {
+    throw new Error("项目目录选择请求无效");
+  }
+  let frameOrigin = "";
+  try { frameOrigin = new URL(event.senderFrame.url).origin; } catch { }
+  if (frameOrigin !== new URL(serverOrigin).origin) throw new Error("项目目录只能由应用主窗口选择");
+
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: "选择本机项目文件夹",
+    properties: ["openDirectory", "createDirectory"]
+  });
+  if (result.canceled || !result.filePaths[0]) return { cancelled: true };
+  const selectedPath = fs.realpathSync(result.filePaths[0]);
+  if (!fs.statSync(selectedPath).isDirectory() || path.parse(selectedPath).root === selectedPath) {
+    throw new Error("请选择一个具体的项目文件夹");
+  }
+
+  return { name: path.basename(selectedPath), workspacePath: selectedPath };
+});
+
+ipcMain.handle("agent-harness:register-project-folder", async (event, input = {}) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame || !serverOrigin || !desktopToken) {
+    throw new Error("项目目录注册请求无效");
+  }
+  let frameOrigin = "";
+  try { frameOrigin = new URL(event.senderFrame.url).origin; } catch { }
+  if (frameOrigin !== new URL(serverOrigin).origin) throw new Error("项目目录只能由应用主窗口注册");
+  const selectedPath = fs.realpathSync(path.resolve(String(input.workspacePath || "")));
+  if (!fs.statSync(selectedPath).isDirectory() || path.parse(selectedPath).root === selectedPath) {
+    throw new Error("请选择一个具体的项目文件夹");
+  }
+
+  const response = await fetch(`${serverOrigin}/api/desktop/projects/from-folder`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${desktopToken}` },
+    body: JSON.stringify({ name: String(input.name || path.basename(selectedPath)), workspacePath: selectedPath })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || "添加本机项目失败");
+  return payload;
+});
 
 app.setName("Agent Harness");
 if (SMOKE_MODE && process.env.PENGUIN_DESKTOP_SMOKE_USER_DATA) {
@@ -139,7 +182,8 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true
+      sandbox: true,
+      preload: path.join(app.getAppPath(), "desktop", "preload.cjs")
     }
   });
   mainWindow = win;
