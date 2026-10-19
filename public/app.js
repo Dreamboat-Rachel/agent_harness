@@ -4,7 +4,7 @@ import { icon, starters, panelNames, statusLabel, orbit } from "./workbench-ui.j
 const state = {
   projects: [], projectId: localStorage.getItem("agent-harness-project") || "default", switchingProject: false, sessions: [], current: null, stream: null, capabilities: null, view: "home", page: null, submitting: false, focusUserMessage: null, mcpEditing: null, mcpBusy: false, skillBusy: false, toolTab: "mcp", modelEditing: null, modelSettingsTab: "models",
   expandedToolResults: new Set(), toolResultHeights: new Map(),
-  knowledge: { memory: "", skills: [], stats: {} }, memorySearch: { facts: [], graph: { entities: [], relations: [] } },
+  knowledge: { memory: "", skills: [], stats: {} }, library: { documents: [], retrieval: {} }, libraryPreview: null, libraryProposals: null, libraryGraphBusy: false, memorySearch: { facts: [], graph: { entities: [], relations: [] } },
   graph: { entities: [], relations: [] }, schedules: [], mcp: [], skills: { installed: [], catalog: [] },
   models: { defaultModelId: null, models: [] }, selectedModelId: "", pendingSources: [],
   modelConfig: { baseUrl: "", model: "", embeddingBaseUrl: "", embeddingModel: "", embeddingDimensions: "", embeddingFormat: "auto", policy: "always-ask", apiKeyConfigured: false, embeddingApiKeyConfigured: false, embeddingApiKeySeparateConfigured: false, amapApiKeyConfigured: false }
@@ -26,6 +26,7 @@ function confirmInApp(message, { title = "确认操作", confirmText = "确认�
 
 const workspacePages = {
   memory: { icon: "memory", description: "管理长期记忆与偏好，让每次协作都能接着上次的理解。" },
+  library: { icon: "document", description: "按项目整理可持续成长的资料，聊天时自动检索相关片段；知识图谱提取始终由你确认。" },
   schedules: { icon: "clock", description: "填写名称、任务和运行间隔（分钟；60 表示每小时）。勾选“使用当前会话”可沿用当前对话，取消后会单独创建任务。首次运行在设定间隔后开始，需保持应用运行。" },
   graph: { icon: "graph", description: "查看信息之间的联系，管理自动学习和知识关系。" },
   mcp: { icon: "tools", description: "连接 MCP 服务，安装 Skills，为你的 AI 工作伙伴扩展能力。" },
@@ -208,7 +209,8 @@ function renderProjects() {
   $("project-list").innerHTML = state.projects.map((project) => {
     const selected = project.id === current?.id;
     const displayName = project.isDefault && project.name === "项目" ? "默认工作区" : project.name;
-    return `<div class="project-row ${selected ? "selected" : ""}"><button class="project-option ${selected ? "selected" : ""}" type="button" aria-pressed="${selected}" data-project-id="${escapeHtml(project.id)}"><span data-icon="folder"></span><span class="project-option-copy" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</span></button><span class="project-option-meta"><button class="project-option-chat" type="button" data-new-project-chat="${escapeHtml(project.id)}" title="在 ${escapeHtml(displayName)} 下新建对话" aria-label="在 ${escapeHtml(displayName)} 下新建对话"><span data-icon="edit"></span></button></span>${selected ? `<div class="project-session-list" ${state.sessions.length ? "" : "hidden"}><div id="sessions" class="sessions" aria-label="${escapeHtml(displayName)} 项目对话"></div></div>` : ""}</div>`;
+    const projectActions = project.isDefault ? "" : `<span class="project-option-meta"><button class="project-option-chat" type="button" data-new-project-chat="${escapeHtml(project.id)}" title="在 ${escapeHtml(displayName)} 下新建对话" aria-label="在 ${escapeHtml(displayName)} 下新建对话"><span data-icon="edit"></span></button><button class="project-option-more" type="button" data-project-menu="${escapeHtml(project.id)}" aria-label="${escapeHtml(displayName)} 项目菜单" aria-expanded="false" title="项目选项"><span data-icon="more"></span></button></span><div class="project-actions-menu" data-project-actions="${escapeHtml(project.id)}" hidden><button class="project-delete-action" type="button" data-delete-project="${escapeHtml(project.id)}"><span data-icon="trash"></span>删除项目</button></div>`;
+    return `<div class="project-row ${selected ? "selected" : ""}"><button class="project-option ${selected ? "selected" : ""}" type="button" aria-pressed="${selected}" data-project-id="${escapeHtml(project.id)}"><span data-icon="folder"></span><span class="project-option-copy" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</span></button>${projectActions}${selected ? `<div class="project-session-list" ${state.sessions.length ? "" : "hidden"}><div id="sessions" class="sessions" aria-label="${escapeHtml(displayName)} 项目对话"></div></div>` : ""}</div>`;
   }).join("");
   $("project-list").querySelectorAll("[data-icon]").forEach((element) => { element.innerHTML = icon(element.dataset.icon); });
   $("create-project").disabled = state.switchingProject;
@@ -234,6 +236,9 @@ async function switchProject(projectId) {
   state.page = null;
   state.view = "home";
   state.pendingSources = [];
+  state.libraryPreview = null;
+  state.libraryProposals = null; state.libraryGraphBusy = false;
+  state.library = { documents: [], retrieval: {} };
   state.submitting = false;
   $("input").value = "";
   renderProjects();
@@ -362,6 +367,22 @@ async function selectProjectFolder() {
     return;
   }
   $("project-desktop-required-dialog").showModal();
+}
+
+async function deleteProject(projectId) {
+  const project = state.projects.find((entry) => entry.id === projectId);
+  if (!project || project.isDefault) return;
+  const details = project.linkedFolder
+    ? `确定删除项目“${project.name}”吗？项目下的会话、记忆、模型和配置会被删除。原始项目文件夹会保留。此操作无法撤销。`
+    : `确定删除项目“${project.name}”吗？项目下的会话、记忆、模型、配置和已导入文件都会被永久删除。此操作无法撤销。`;
+  if (!await confirmInApp(details, { title: "删除项目" })) return;
+  try {
+    const result = await api(`/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" });
+    state.projects = result.projects || state.projects.filter((entry) => entry.id !== projectId);
+    if (state.projectId === projectId) await switchProject("default");
+    renderProjects();
+    notify(`项目“${project.name}”已删除`);
+  } catch (error) { notify(error.message, "error"); }
 }
 
 function renderHome() {
@@ -497,7 +518,7 @@ function renderKnowledge() {
   $("memory-stats").innerHTML = [["事实", stats.facts || 0], ["实体", stats.entities || 0], ["关系", stats.relations || 0]]
     .map(([label, value]) => `<div class="memory-stat"><strong>${value}</strong><span>${label}</span></div>`).join("");
   $("memory-facts").innerHTML = state.memorySearch.facts.length
-    ? state.memorySearch.facts.map((fact) => `<div class="list-item memory-fact"><div class="item-head"><strong>${escapeHtml(fact.kind)}</strong><button class="delete-button" type="button" title="删除记忆" aria-label="删除记忆" data-delete-memory="${escapeHtml(fact.id)}">×</button></div><p>${escapeHtml(fact.content)}</p><small>置信度 ${Math.round(Number(fact.confidence) * 100)}% · 使用 ${fact.accessCount || 0} 次</small></div>`).join("")
+    ? state.memorySearch.facts.map((fact) => `<div class="list-item memory-fact"><div class="item-head"><strong>${escapeHtml(fact.kind)}</strong><button class="delete-button" type="button" title="删除记忆" aria-label="删除记忆" data-delete-memory="${escapeHtml(fact.id)}">×</button></div><p>${escapeHtml(fact.content)}</p><small>置信度 ${Math.round(Number(fact.confidence) * 100)}% · 使用 ${fact.accessCount || 0} 次${fact.sourceDocuments ? ` · 来源：${escapeHtml(fact.sourceDocuments)}` : ""}</small></div>`).join("")
     : '<div class="panel-empty">暂无匹配的结构化记忆</div>';
   document.querySelectorAll("[data-delete-memory]").forEach((button) => button.addEventListener("click", () => deleteMemory(button.dataset.deleteMemory)));
   if (document.querySelector(".conversation").classList.contains("is-home")) renderHome();
@@ -518,7 +539,7 @@ function renderGraph() {
     $("graph-canvas").innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="知识图谱，共 ${entities.length} 个实体和 ${relations.length} 条可视关系"><title>知识图谱</title>${lines}${nodes}</svg>`;
   }
   $("graph-relations").innerHTML = state.graph.relations.length
-    ? state.graph.relations.slice(0, 40).map((relation) => `<div class="list-item"><button class="delete-button" type="button" aria-label="删除关系" title="删除关系" data-delete-relation="${escapeHtml(relation.id)}">×</button><strong>${escapeHtml(relation.source)}</strong><span class="relation-arrow">${escapeHtml(relation.predicate)} →</span><strong>${escapeHtml(relation.target || relation.targetValue)}</strong></div>`).join("")
+    ? state.graph.relations.slice(0, 40).map((relation) => `<div class="list-item"><button class="delete-button" type="button" aria-label="删除关系" title="删除关系" data-delete-relation="${escapeHtml(relation.id)}">×</button><strong>${escapeHtml(relation.source)}</strong><span class="relation-arrow">${escapeHtml(relation.predicate)} →</span><strong>${escapeHtml(relation.target || relation.targetValue)}</strong>${relation.sourceDocuments ? `<small class="relation-source">来源：${escapeHtml(relation.sourceDocuments)}</small>` : ""}</div>`).join("")
     : '<div class="panel-empty">暂无关系</div>';
   document.querySelectorAll("[data-delete-relation]").forEach((button) => button.addEventListener("click", async () => {
     if (!await confirmInApp("确定删除这条图谱关系吗？此操作无法撤销。")) return;
@@ -886,6 +907,7 @@ function openPanel(name) {
     $("workspace-page-description").textContent = workspacePages[name].description;
     $("workspace-page-icon").innerHTML = icon(workspacePages[name].icon);
     renderCurrent();
+    if (name === "library") void refreshLibrary();
     $("workspace-page").scrollTop = 0;
     $("workspace-page-title").focus({ preventScroll: true });
     return;
@@ -902,6 +924,114 @@ function openPanel(name) {
   $("inspector-title").textContent = panelNames[name];
   setInspector(true);
   $("tab-" + name).scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+async function refreshLibrary() {
+  try {
+    state.library = await api("/library");
+    renderLibrary();
+  } catch (error) { notify(error.message, "error"); }
+}
+
+function renderLibrary() {
+  const documents = state.library.documents || [];
+  $("library-count").textContent = `${documents.length} 份资料`;
+  $("library-documents").innerHTML = documents.length ? documents.map((document) => `<article class="library-document ${state.libraryPreview?.id === document.id ? "selected" : ""}">
+    <button class="library-document-open" type="button" data-library-preview="${escapeHtml(document.id)}"><span class="library-document-icon">${icon("document")}</span><span class="library-document-copy"><strong title="${escapeHtml(document.name)}">${escapeHtml(document.name)}</strong><small>${formatLibraryBytes(document.size)} · ${document.chunkCount} 个片段 · ${document.graphStatus === "extracted" ? "已进入图谱" : "仅用于检索"}</small></span></button>
+    <div class="library-document-actions"><button class="text-button" type="button" data-library-graph="${escapeHtml(document.id)}">预览图谱</button><button class="icon-button" type="button" data-library-delete="${escapeHtml(document.id)}" title="删除资料" aria-label="删除资料：${escapeHtml(document.name)}">${icon("trash")}</button></div>
+  </article>`).join("") : '<div class="panel-empty">还没有知识来源</div>';
+  $("library-documents").querySelectorAll("[data-library-preview]").forEach((button) => button.addEventListener("click", () => void previewLibraryDocument(button.dataset.libraryPreview)));
+  $("library-documents").querySelectorAll("[data-library-delete]").forEach((button) => button.addEventListener("click", () => void deleteLibraryDocument(button.dataset.libraryDelete)));
+  $("library-documents").querySelectorAll("[data-library-graph]").forEach((button) => button.addEventListener("click", () => void previewLibraryGraph(button.dataset.libraryGraph)));
+  if (state.libraryPreview) renderLibraryPreview();
+}
+
+function formatLibraryBytes(bytes) {
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+async function previewLibraryDocument(id) {
+  try {
+    state.libraryPreview = await api(`/library/${encodeURIComponent(id)}`);
+    state.libraryProposals = null;
+    $("library-graph-card").hidden = true;
+    renderLibrary();
+    renderLibraryPreview();
+  } catch (error) { notify(error.message, "error"); }
+}
+
+function renderLibraryPreview() {
+  const document = state.libraryPreview;
+  $("library-preview-title").textContent = document?.name || "内容预览";
+  $("library-preview-meta").textContent = document ? `${formatLibraryBytes(document.size)} · 原文` : "选择一份资料查看原文";
+  $("library-preview-content").textContent = document?.content || "";
+  $("library-preview-content").classList.toggle("hidden", !document);
+  $("library-preview-empty").classList.toggle("hidden", Boolean(document));
+  $("library-preview-close").classList.toggle("hidden", !document);
+}
+
+async function deleteLibraryDocument(id) {
+  const document = state.library.documents.find((entry) => entry.id === id);
+  if (!document || !await confirmInApp(`确定从当前项目知识库删除“${document.name}”吗？`, { title: "删除知识来源", confirmText: "确认删除" })) return;
+  try {
+    await api(`/library/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (state.libraryPreview?.id === id) state.libraryPreview = null;
+    state.libraryProposals = null;
+    $("library-graph-card").hidden = true;
+    await refreshLibrary();
+    await refreshMemory();
+    renderLibraryPreview();
+    notify("知识来源已删除");
+  } catch (error) { notify(error.message, "error"); }
+}
+
+async function previewLibraryGraph(id) {
+  if (state.libraryGraphBusy) return;
+  const status = $("library-status");
+  status.className = "config-status";
+  state.libraryGraphBusy = true;
+  syncLibraryGraphButtons();
+  status.textContent = "正在分析资料，较长文档可能需要几分钟，最长约十分钟；结果不会自动写入图谱…";
+  try {
+    state.libraryProposals = await api(`/library/${encodeURIComponent(id)}/graph-preview`, { method: "POST", body: "{}" });
+    renderLibraryProposals();
+    status.textContent = "请检查并勾选希望加入图谱的事实。";
+  } catch (error) { status.textContent = error.message; status.className = "config-status error"; }
+  finally { state.libraryGraphBusy = false; syncLibraryGraphButtons(); }
+}
+
+function syncLibraryGraphButtons() {
+  document.querySelectorAll("[data-library-graph]").forEach((button) => {
+    button.disabled = state.libraryGraphBusy;
+    if (!button.dataset.idleLabel) button.dataset.idleLabel = button.textContent;
+    button.textContent = state.libraryGraphBusy ? "分析中…" : button.dataset.idleLabel;
+  });
+}
+
+function renderLibraryProposals() {
+  const proposals = state.libraryProposals;
+  const facts = proposals?.facts || [];
+  $("library-graph-card").hidden = !proposals;
+  $("library-graph-proposals").innerHTML = facts.length ? facts.map((fact, index) => `<label class="library-proposal"><input type="checkbox" data-library-fact="${index}" checked /><span><strong>${escapeHtml(fact.content || [fact.subject, fact.predicate, fact.object].filter(Boolean).join(" · "))}</strong><small>${escapeHtml(fact.kind || "事实")} · ${escapeHtml(fact.subject || "")} · 置信度 ${Math.round(Number(fact.confidence || 0) * 100)}%</small></span></label>`).join("") : '<div class="panel-empty">没有发现可确认的事实。原文仍可在知识库中检索。</div>';
+  $("library-graph-confirm").classList.toggle("hidden", !facts.length);
+}
+
+async function confirmLibraryGraph() {
+  const proposals = state.libraryProposals;
+  if (!proposals) return;
+  const selectedFacts = proposals.facts.filter((_, index) => $("library-graph-proposals").querySelector(`[data-library-fact="${index}"]`)?.checked);
+  if (!selectedFacts.length) { notify("请至少选择一条事实", "error"); return; }
+  const normalize = (value) => String(value || "").normalize("NFKC").trim().toLocaleLowerCase();
+  const relations = (proposals.relations || []).filter((relation) => selectedFacts.some((fact) => normalize(fact.subject) === normalize(relation.source) && normalize(fact.predicate) === normalize(relation.predicate) && normalize(fact.object) === normalize(relation.target)));
+  try {
+    const result = await api(`/library/${encodeURIComponent(proposals.document.id)}/graph-confirm`, { method: "POST", body: JSON.stringify({ facts: selectedFacts, relations }) });
+    state.libraryProposals = null;
+    $("library-graph-proposals").innerHTML = '<div class="panel-empty">已确认。你可以在“知识图谱”中查看更新后的关系。</div>';
+    $("library-graph-confirm").classList.add("hidden");
+    await refreshLibrary();
+    await refreshMemory();
+    notify(`已将 ${result.stored.facts} 条事实加入知识图谱`);
+  } catch (error) { notify(error.message, "error"); }
 }
 
 function updateNavigation() {
@@ -948,6 +1078,22 @@ $("new-session").addEventListener("click", async () => {
 });
 
 $("project-list").addEventListener("click", (event) => {
+  const deleteButton = event.target.closest("[data-delete-project]");
+  if (deleteButton) {
+    void deleteProject(deleteButton.dataset.deleteProject);
+    return;
+  }
+  const menuButton = event.target.closest("[data-project-menu]");
+  if (menuButton) {
+    const projectId = menuButton.dataset.projectMenu;
+    const menu = $("project-list").querySelector(`[data-project-actions="${projectId}"]`);
+    const opening = menu.hidden;
+    $("project-list").querySelectorAll("[data-project-actions]").forEach((item) => { item.hidden = true; });
+    $("project-list").querySelectorAll("[data-project-menu]").forEach((button) => button.setAttribute("aria-expanded", "false"));
+    menu.hidden = !opening;
+    menuButton.setAttribute("aria-expanded", String(opening));
+    return;
+  }
   const newChat = event.target.closest("[data-new-project-chat]");
   if (newChat) {
     void startProjectConversation(newChat.dataset.newProjectChat);
@@ -1108,6 +1254,29 @@ $("save-memory").addEventListener("click", async () => {
     notify("长期记忆已保存");
   } catch (error) { notify(error.message, "error"); }
 });
+
+$("library-upload").addEventListener("click", () => $("library-files").click());
+$("library-files").addEventListener("change", async (event) => {
+  const files = [...event.target.files || []];
+  if (!files.length) return;
+  const status = $("library-status");
+  status.className = "config-status";
+  status.textContent = "正在读取并加入项目知识库…";
+  try {
+    if (files.length > 10) throw new Error("一次最多添加 10 个文件");
+    if (files.some((file) => file.size > 3 * 1024 * 1024)) throw new Error("单个文件不能超过 3 MB");
+    if (files.reduce((sum, file) => sum + file.size, 0) > 12 * 1024 * 1024) throw new Error("本次上传总大小不能超过 12 MB");
+    const result = await api("/library", { method: "POST", body: JSON.stringify({ files: await Promise.all(files.map(async (file) => ({ name: file.name, content: await file.text() }))) }) });
+    state.library.documents = [...result.documents.filter((document) => !document.duplicate), ...state.library.documents];
+    await refreshLibrary();
+    status.textContent = `已处理 ${result.documents.length} 个文件。原文保存在当前项目中，并可在对话中检索。`;
+    notify("资料已加入项目知识库");
+  } catch (error) { status.textContent = error.message; status.className = "config-status error"; }
+  finally { event.target.value = ""; }
+});
+$("library-refresh").addEventListener("click", () => void refreshLibrary());
+$("library-preview-close").addEventListener("click", () => { state.libraryPreview = null; renderLibrary(); renderLibraryPreview(); });
+$("library-graph-confirm").addEventListener("click", () => void confirmLibraryGraph());
 
 $("memory-search-form").addEventListener("submit", async (event) => {
   event.preventDefault();

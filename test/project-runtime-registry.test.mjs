@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -71,6 +71,48 @@ test("project registry links external folders and rejects overlapping workspaces
     });
     await reloaded.init();
     assert.equal((await reloaded.get(project.id)).workspaceRoot, externalWorkspace);
+  } finally {
+    for (const runtime of registry.loadedRuntimes()) runtime.store?.close?.();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("project removal protects the default and external workspace while deleting project data", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agent-harness-project-remove-"));
+  const externalWorkspace = path.join(root, "external-repo");
+  await mkdir(externalWorkspace, { recursive: true });
+  const registry = new ProjectRuntimeRegistry({
+    dataRoot: path.join(root, "data"),
+    defaultWorkspaceRoot: path.join(root, "workspace"),
+    createRuntime: async (project) => ({
+      ...project,
+      sessions: new Map(),
+      store: { closed: false, close() { this.closed = true; } },
+    }),
+  });
+
+  try {
+    await registry.init();
+    await assert.rejects(registry.remove("default"), /默认工作区不能删除/);
+
+    const imported = await registry.create("内部项目");
+    const importedRoot = path.join(root, "data", "projects", imported.project.id);
+    const importedRuntime = await registry.get(imported.project.id);
+    await mkdir(path.join(importedRoot, "workspace"), { recursive: true });
+    importedRuntime.sessions.set("running", { status: "running" });
+    await assert.rejects(registry.remove(imported.project.id), /正在运行/);
+    importedRuntime.sessions.delete("running");
+    const removed = await registry.remove(imported.project.id);
+    assert.equal(removed.deleted, true);
+    await assert.rejects(access(importedRoot), { code: "ENOENT" });
+    assert.equal(importedRuntime.store.closed, true);
+
+    const linked = await registry.create("外部项目", { workspaceRoot: externalWorkspace });
+    const linkedRoot = path.join(root, "data", "projects", linked.project.id);
+    await registry.remove(linked.project.id);
+    await access(externalWorkspace);
+    await assert.rejects(access(linkedRoot), { code: "ENOENT" });
+    assert.deepEqual(registry.list().map(({ id }) => id), ["default"]);
   } finally {
     for (const runtime of registry.loadedRuntimes()) runtime.store?.close?.();
     await rm(root, { recursive: true, force: true });

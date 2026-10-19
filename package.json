@@ -1,6 +1,6 @@
 {
   "name": "penguin-harness-replica",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "author": "Agent Harness Contributors",
   "description": "Local AI agent harness with persistent memory, tools and an Electron desktop shell.",
@@ -15,7 +15,7 @@
     "desktop:pack": "electron-builder --publish never",
     "desktop:pack:win": "electron-builder --win nsis --x64 --publish never",
     "desktop:pack:linux": "electron-builder --linux AppImage deb --x64 --publish never",
-    "check": "node --check src/server.mjs && node --check src/local-gateway.mjs && node --check src/project-runtime-registry.mjs && node --check src/store.mjs && node --check src/knowledge.mjs && node --check src/skills.mjs && node --check src/model-registry.mjs && node --check src/memory-engine.mjs && node --check src/embeddings.mjs && node --check src/web-search.mjs && node --check src/command-sandbox.mjs && node --check src/model-config.mjs && node --check src/openai-stream.mjs && node --check src/mcp.mjs && node --check src/runtime-utils.mjs && node --check public/markdown.js && node --check public/app.js && node --check public/workbench-ui.js && node --check desktop/main.cjs && node --check desktop/smoke.cjs",
+    "check": "node --check src/server.mjs && node --check src/local-gateway.mjs && node --check src/project-runtime-registry.mjs && node --check src/store.mjs && node --check src/knowledge.mjs && node --check src/knowledge-library.mjs && node --check src/skills.mjs && node --check src/model-registry.mjs && node --check src/memory-engine.mjs && node --check src/embeddings.mjs && node --check src/web-search.mjs && node --check src/command-sandbox.mjs && node --check src/model-config.mjs && node --check src/openai-stream.mjs && node --check src/mcp.mjs && node --check src/runtime-utils.mjs && node --check public/markdown.js && node --check public/app.js && node --check public/workbench-ui.js && node --check desktop/main.cjs && node --check desktop/smoke.cjs",
     "test": "node --test --test-concurrency=1 test/*.test.mjs"
   },
   "dependencies": {

@@ -17,6 +17,7 @@
         <nav class="workspace-nav" aria-label="主导航">
           <button id="nav-home" class="nav-item active" type="button"><span data-icon="grid"></span>工作台<span class="nav-current"></span></button>
           <button class="nav-item" data-open-panel="memory" type="button"><span data-icon="memory"></span>记忆空间</button>
+          <button class="nav-item" data-open-panel="library" type="button"><span data-icon="document"></span>知识库</button>
           <button class="nav-item" data-open-panel="schedules" type="button"><span data-icon="clock"></span>自动化<span id="schedule-count" class="nav-count">0</span></button>
           <button class="nav-item" data-open-panel="graph" type="button"><span data-icon="graph"></span>知识图谱</button>
           <button class="nav-item" data-open-panel="mcp" type="button"><span data-icon="tools"></span>工具连接</button>
@@ -102,6 +103,32 @@
             </form>
           </details>
           </section></div>
+        </div>
+
+        <div class="panel" data-panel="library">
+          <div class="library-layout">
+            <section class="page-card library-upload-card">
+              <div class="library-upload-copy"><div class="section-title">项目资料</div><small>当前项目独立保存 · 支持 Markdown、文本、代码、JSON、CSV</small></div>
+              <input id="library-files" class="source-file-input" type="file" multiple accept=".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xml,.html,.htm,.log,.js,.mjs,.cjs,.ts,.tsx,.jsx,.py,.java,.c,.cpp,.h,.cs,.go,.rs,.sh,.sql,.css,.ini,.toml" />
+              <button id="library-upload" class="small-button" type="button"><span data-icon="plus"></span>选择文件</button>
+              <small class="library-upload-limit">单文件 ≤ 3 MB · 每次最多 10 个</small>
+              <div id="library-status" class="config-status" role="status"></div>
+            </section>
+            <section class="page-card library-documents-card">
+              <div class="panel-toolbar"><div><div class="section-title">资料列表</div><small id="library-count">0 份资料</small></div><button id="library-refresh" class="small-button secondary-button" type="button" title="刷新资料列表">刷新</button></div>
+              <div id="library-documents" class="library-documents stack-list"><div class="panel-empty">还没有知识来源</div></div>
+            </section>
+            <section class="page-card library-preview-card">
+              <div class="panel-toolbar"><div><div id="library-preview-title" class="section-title">内容预览</div><small id="library-preview-meta">选择一份资料查看原文</small></div><button id="library-preview-close" class="icon-button hidden" type="button" title="关闭预览" aria-label="关闭预览"><span data-icon="close"></span></button></div>
+              <div id="library-preview-empty" class="library-preview-empty"><span data-icon="document"></span><strong>选择一份资料</strong><small>预览原文，或查看它与当前问题相关的知识片段</small></div>
+              <pre id="library-preview-content" class="library-preview-content hidden"></pre>
+            </section>
+            <section id="library-graph-card" class="page-card library-graph-card" hidden>
+              <div class="library-graph-heading"><div><div class="section-title">图谱提取预览</div><p class="hint">检查模型识别结果，勾选后确认写入。未确认的内容不会进入知识图谱。</p></div><span class="library-review-label">待审核</span></div>
+              <div id="library-graph-proposals" class="library-graph-proposals"><div class="panel-empty">选择资料后可预览提取内容</div></div>
+              <button id="library-graph-confirm" class="small-button hidden" type="button">确认所选内容并加入图谱</button>
+            </section>
+          </div>
         </div>
 
         <div class="panel" data-panel="agents">

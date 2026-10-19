@@ -58,6 +58,8 @@ export class Store {
         confidence REAL NOT NULL DEFAULT 0.7,
         source_session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
         source_message_id TEXT,
+        source_document_id TEXT,
+        source_document_name TEXT,
         status TEXT NOT NULL DEFAULT 'active',
         access_count INTEGER NOT NULL DEFAULT 0,
         last_accessed_at TEXT,
@@ -65,6 +67,14 @@ export class Store {
         updated_at TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_memory_facts_status ON memory_facts(status, updated_at DESC);
+      CREATE TABLE IF NOT EXISTS memory_fact_documents (
+        fact_id TEXT NOT NULL REFERENCES memory_facts(id) ON DELETE CASCADE,
+        document_id TEXT NOT NULL,
+        document_name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (fact_id, document_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_memory_fact_documents_document ON memory_fact_documents(document_id);
       CREATE TABLE IF NOT EXISTS memory_embeddings (
         fact_id TEXT PRIMARY KEY REFERENCES memory_facts(id) ON DELETE CASCADE,
         model TEXT NOT NULL,
@@ -114,6 +124,12 @@ export class Store {
         created_at TEXT NOT NULL
       );
     `);
+    const memoryColumns = new Set(this.db.prepare("PRAGMA table_info(memory_facts)").all().map((column) => column.name));
+    if (!memoryColumns.has("source_document_id")) this.db.exec("ALTER TABLE memory_facts ADD COLUMN source_document_id TEXT");
+    if (!memoryColumns.has("source_document_name")) this.db.exec("ALTER TABLE memory_facts ADD COLUMN source_document_name TEXT");
+    this.db.exec(`INSERT OR IGNORE INTO memory_fact_documents(fact_id,document_id,document_name,created_at)
+      SELECT id,source_document_id,source_document_name,updated_at FROM memory_facts
+      WHERE source_document_id IS NOT NULL AND source_document_name IS NOT NULL`);
     this.db.exec(`INSERT OR IGNORE INTO knowledge_relation_facts(relation_id,fact_id)
       SELECT r.id,f.id FROM knowledge_relations r
       JOIN knowledge_entities s ON s.id=r.source_entity_id
@@ -197,22 +213,39 @@ export class Store {
     const existing = this.db.prepare("SELECT id FROM memory_facts WHERE fingerprint=?").get(row.fingerprint)
       || this.db.prepare("SELECT id,kind,subject,predicate,object_value AS object FROM memory_facts WHERE status='active'").all().find((fact) => ["kind", "subject", "predicate", "object"].every((key) => identity(fact[key]) === identity(row[key])));
     if (existing) {
-      this.db.prepare("UPDATE memory_facts SET kind=?,subject=?,predicate=?,object_value=?,content=?,confidence=MAX(confidence,?),source_session_id=COALESCE(?,source_session_id),source_message_id=COALESCE(?,source_message_id),status='active',updated_at=? WHERE id=?")
-        .run(row.kind, row.subject, row.predicate, row.object, row.content, row.confidence, row.sourceSessionId || null, row.sourceMessageId || null, row.updatedAt, existing.id);
+      this.db.prepare("UPDATE memory_facts SET kind=?,subject=?,predicate=?,object_value=?,content=?,confidence=MAX(confidence,?),source_session_id=COALESCE(?,source_session_id),source_message_id=COALESCE(?,source_message_id),source_document_id=COALESCE(?,source_document_id),source_document_name=COALESCE(?,source_document_name),status='active',updated_at=? WHERE id=?")
+        .run(row.kind, row.subject, row.predicate, row.object, row.content, row.confidence, row.sourceSessionId || null, row.sourceMessageId || null, row.sourceDocumentId || null, row.sourceDocumentName || null, row.updatedAt, existing.id);
+      this.#linkFactDocument(existing.id, row);
       return { ...row, id: existing.id, created: false };
     }
-    this.db.prepare("INSERT INTO memory_facts(id,fingerprint,kind,subject,predicate,object_value,content,confidence,source_session_id,source_message_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?, 'active',?,?)")
-      .run(row.id, row.fingerprint, row.kind, row.subject, row.predicate, row.object, row.content, row.confidence, row.sourceSessionId || null, row.sourceMessageId || null, row.createdAt, row.updatedAt);
+    this.db.prepare("INSERT INTO memory_facts(id,fingerprint,kind,subject,predicate,object_value,content,confidence,source_session_id,source_message_id,source_document_id,source_document_name,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?, 'active',?,?)")
+      .run(row.id, row.fingerprint, row.kind, row.subject, row.predicate, row.object, row.content, row.confidence, row.sourceSessionId || null, row.sourceMessageId || null, row.sourceDocumentId || null, row.sourceDocumentName || null, row.createdAt, row.updatedAt);
+    this.#linkFactDocument(row.id, row);
     return { ...row, created: true };
   }
 
+  #linkFactDocument(factId, row) {
+    if (!row.sourceDocumentId || !row.sourceDocumentName) return;
+    this.db.prepare("INSERT OR IGNORE INTO memory_fact_documents(fact_id,document_id,document_name,created_at) VALUES(?,?,?,?)")
+      .run(factId, row.sourceDocumentId, row.sourceDocumentName, row.createdAt || row.updatedAt || new Date().toISOString());
+  }
+
+  removeDocumentFacts(documentId) {
+    this.db.prepare("DELETE FROM memory_fact_documents WHERE document_id=?").run(documentId);
+    this.db.prepare(`UPDATE memory_facts SET status='deleted',source_document_id=NULL,source_document_name=NULL,updated_at=?
+      WHERE source_document_id=? AND NOT EXISTS (SELECT 1 FROM memory_fact_documents l WHERE l.fact_id=memory_facts.id)
+      AND source_session_id IS NULL AND source_message_id IS NULL`).run(new Date().toISOString(), documentId);
+    this.db.prepare(`UPDATE memory_facts SET source_document_id=NULL,source_document_name=NULL
+      WHERE source_document_id=? AND NOT EXISTS (SELECT 1 FROM memory_fact_documents l WHERE l.fact_id=memory_facts.id)`).run(documentId);
+  }
+
   memoryFacts({ limit = 200, status = "active" } = {}) {
-    return this.db.prepare(`SELECT id,fingerprint,kind,subject,predicate,object_value AS object,content,confidence,source_session_id AS sourceSessionId,source_message_id AS sourceMessageId,status,access_count AS accessCount,last_accessed_at AS lastAccessedAt,created_at AS createdAt,updated_at AS updatedAt FROM memory_facts WHERE status=? ORDER BY updated_at DESC LIMIT ?`)
+    return this.db.prepare(`SELECT f.id,f.fingerprint,f.kind,f.subject,f.predicate,f.object_value AS object,f.content,f.confidence,f.source_session_id AS sourceSessionId,f.source_message_id AS sourceMessageId,f.source_document_id AS sourceDocumentId,f.source_document_name AS sourceDocumentName,(SELECT group_concat(document_name, ', ') FROM memory_fact_documents l WHERE l.fact_id=f.id) AS sourceDocuments,f.status,f.access_count AS accessCount,f.last_accessed_at AS lastAccessedAt,f.created_at AS createdAt,f.updated_at AS updatedAt FROM memory_facts f WHERE status=? ORDER BY updated_at DESC LIMIT ?`)
       .all(status, Math.max(1, Math.min(Number(limit) || 200, 1000)));
   }
 
   memoryCandidates() {
-    return this.db.prepare("SELECT id,kind,subject,predicate,object_value AS object,content,confidence,access_count AS accessCount,updated_at AS updatedAt FROM memory_facts WHERE status='active' ORDER BY updated_at DESC").all();
+    return this.db.prepare("SELECT f.id,f.kind,f.subject,f.predicate,f.object_value AS object,f.content,f.confidence,f.access_count AS accessCount,f.updated_at AS updatedAt,(SELECT group_concat(document_name, ', ') FROM memory_fact_documents l WHERE l.fact_id=f.id) AS sourceDocuments FROM memory_facts f WHERE status='active' ORDER BY updated_at DESC").all();
   }
 
   touchMemoryFacts(ids) {
@@ -282,7 +315,7 @@ export class Store {
     const bounded = Math.max(1, Math.min(Number(limit) || 300, 1000));
     const entities = this.db.prepare("SELECT id,normalized_name AS normalizedName,name,type,attributes_json AS attributesJson,created_at AS createdAt,updated_at AS updatedAt FROM knowledge_entities e WHERE EXISTS (SELECT 1 FROM active_knowledge_relations r WHERE r.source_entity_id=e.id OR r.target_entity_id=e.id) OR EXISTS (SELECT 1 FROM memory_facts f WHERE f.status='active' AND lower(trim(f.subject))=e.normalized_name) ORDER BY updated_at DESC LIMIT ?").all(bounded).map((row) => ({ ...row, attributes: JSON.parse(row.attributesJson || "{}") }));
     const entityIds = new Set(entities.map((entity) => entity.id));
-    const relations = this.db.prepare("SELECT r.id,r.source_entity_id AS sourceEntityId,s.name AS source,r.predicate,r.target_entity_id AS targetEntityId,t.name AS target,r.target_value AS targetValue,r.confidence,r.source_session_id AS sourceSessionId,r.created_at AS createdAt,r.updated_at AS updatedAt FROM active_knowledge_relations r JOIN knowledge_entities s ON s.id=r.source_entity_id LEFT JOIN knowledge_entities t ON t.id=r.target_entity_id ORDER BY r.updated_at DESC LIMIT ?").all(bounded * 2).filter((row) => entityIds.has(row.sourceEntityId) || entityIds.has(row.targetEntityId));
+    const relations = this.db.prepare("SELECT r.id,r.source_entity_id AS sourceEntityId,s.name AS source,r.predicate,r.target_entity_id AS targetEntityId,t.name AS target,r.target_value AS targetValue,r.confidence,r.source_session_id AS sourceSessionId,(SELECT group_concat(DISTINCT l.document_name) FROM knowledge_relation_facts rf JOIN memory_fact_documents l ON l.fact_id=rf.fact_id WHERE rf.relation_id=r.id) AS sourceDocuments,r.created_at AS createdAt,r.updated_at AS updatedAt FROM active_knowledge_relations r JOIN knowledge_entities s ON s.id=r.source_entity_id LEFT JOIN knowledge_entities t ON t.id=r.target_entity_id ORDER BY r.updated_at DESC LIMIT ?").all(bounded * 2).filter((row) => entityIds.has(row.sourceEntityId) || entityIds.has(row.targetEntityId));
     return { entities, relations };
   }
 

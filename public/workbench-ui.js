@@ -20,6 +20,8 @@ const paths = {
   check: '<path d="m5 12 4 4L19 6"/>',
   folder: '<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L9 17l-4 1 1-4Z"/>',
+  more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+  trash: '<path d="M3 6h18m-2 0-.9 14H5.9L5 6m4 0V4h6v2m-5 4v6m4-6v6"/>',
 };
 
 export function icon(name) {
@@ -32,7 +34,7 @@ export const starters = [
   { icon: 'search', color: 'lavender', title: '带着问题，探索更多可能', description: '资料研究 · 方案对比', prompt: '请帮我做一次主题研究。先问我研究主题、时间范围和需要的输出格式；使用联网工具前先确认工具是否可用，并注明信息来源。' },
 ];
 
-export const panelNames = { runtime: '任务详情', memory: '记忆空间', agents: 'Agent 协作', schedules: '自动化', graph: '知识图谱', mcp: '工具连接', config: '模型与设置' };
+export const panelNames = { runtime: '任务详情', memory: '记忆空间', library: '知识库', agents: 'Agent 协作', schedules: '自动化', graph: '知识图谱', mcp: '工具连接', config: '模型与设置' };
 
 export function statusLabel(status) {
   return ({ idle: '就绪', running: '执行中', completed: '已完成', failed: '失败', error: '出现错误', stopped: '已停止' })[status] || status;

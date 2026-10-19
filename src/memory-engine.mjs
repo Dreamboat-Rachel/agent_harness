@@ -14,6 +14,8 @@ const LearnState = Annotation.Root({
   text: Annotation(),
   sessionId: Annotation(),
   sourceMessageId: Annotation(),
+  sourceDocumentId: Annotation(),
+  sourceDocumentName: Annotation(),
   seed: Annotation(),
   extracted: Annotation(),
   validated: Annotation(),
@@ -66,9 +68,9 @@ export class MemoryEngine {
     return { facts: result.facts || [], graph: result.graph || { entities: [], relations: [] }, context: result.context || "" };
   }
 
-  async learn({ text = "", sessionId = null, sourceMessageId = null, facts, relations } = {}) {
+  async learn({ text = "", sessionId = null, sourceMessageId = null, sourceDocumentId = null, sourceDocumentName = null, facts, relations } = {}) {
     const seed = facts || relations ? { facts: facts || [], relations: relations || [] } : null;
-    const result = await this.learnGraph.invoke({ text: clean(text, 30000), sessionId, sourceMessageId, seed });
+    const result = await this.learnGraph.invoke({ text: clean(text, 30000), sessionId, sourceMessageId, sourceDocumentId, sourceDocumentName, seed });
     const stored = result.stored || { facts: [], entities: [], relations: [] };
     try { await this.#indexFacts(stored.facts); } catch { /* Keep learned facts if the vector service is unavailable. */ }
     this.store.insertMemoryEvent({
@@ -197,7 +199,7 @@ export class MemoryEngine {
     for (const fact of extraction.facts) {
       const row = {
         id: randomUUID(), fingerprint: digest([fact.kind, fact.subject, fact.predicate, fact.object].map(normalizeName).join("|")),
-        ...fact, sourceSessionId: state.sessionId || null, sourceMessageId: state.sourceMessageId || null, createdAt: now, updatedAt: now
+        ...fact, sourceSessionId: state.sessionId || null, sourceMessageId: state.sourceMessageId || null, sourceDocumentId: state.sourceDocumentId || null, sourceDocumentName: state.sourceDocumentName || null, createdAt: now, updatedAt: now
       };
       stored.facts.push(this.store.upsertMemoryFact(row));
       if (fact.subject) ensureEntity(fact.subject, fact.subjectType || inferEntityType(fact.subject));

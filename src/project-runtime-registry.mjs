@@ -112,6 +112,32 @@ export class ProjectRuntimeRegistry {
     });
   }
 
+  async remove(id) {
+    const projectId = String(id || "");
+    return await this.serialize(async () => {
+      const project = this.projects.get(projectId);
+      if (!project) throw httpError(404, "项目不存在");
+      if (project.isDefault) throw httpError(400, "默认工作区不能删除");
+      const runtime = this.runtimes.get(projectId);
+      if (runtime && [...runtime.sessions.values()].some((session) => session.status === "running")) {
+        throw httpError(409, "该项目有正在运行的会话，请先停止后再删除");
+      }
+
+      this.projects.delete(projectId);
+      try {
+        await this.writeManifest();
+      } catch (error) {
+        this.projects.set(projectId, project);
+        throw error;
+      }
+
+      this.runtimes.delete(projectId);
+      runtime?.store?.close?.();
+      await fs.rm(path.join(this.projectsRoot, projectId), { recursive: true, force: true });
+      return { deleted: true, project: { id: project.id, name: project.name, linkedFolder: Boolean(project.externalWorkspace) } };
+    });
+  }
+
   loadedRuntimes() {
     return [...this.runtimes.values()];
   }

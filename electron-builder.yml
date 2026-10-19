@@ -2,7 +2,7 @@ appId: com.agentharness.desktop
 productName: Agent Harness
 
 directories:
-  output: desktop-dist-0.2.0
+  output: desktop-dist-0.2.1
   buildResources: desktop/build
 
 files:
